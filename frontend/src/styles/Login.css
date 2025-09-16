@@ -1,0 +1,108 @@
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1a1a1a, #4a4a4a);
+  padding: 20px;
+}
+
+.login-card {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  max-width: 400px;
+  width: 100%;
+  padding: 2rem;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.login-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.3);
+}
+
+.login-logo {
+  max-width: 120px;
+  height: auto;
+  transition: transform 0.2s ease;
+}
+
+.login-logo:hover {
+  transform: scale(1.05);
+}
+
+.form-control {
+  border-radius: 8px;
+  border: 1px solid #ced4da;
+  padding: 10px;
+  transition: border-color 0.3s ease;
+}
+
+.form-control:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 8px rgba(0, 123, 255, 0.3);
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  border: none;
+  border-radius: 8px;
+  padding: 12px;
+  font-weight: 500;
+  transition: background 0.3s ease, transform 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(90deg, #0056b3, #003d80);
+  transform: translateY(-2px);
+}
+
+.btn-link {
+  color: #007bff;
+  transition: color 0.3s ease;
+}
+
+.btn-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+
+.alert-danger {
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.text-center a {
+  color: #007bff;
+  font-weight: 500;
+}
+
+.text-center a:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+
+/* Suporte a tema escuro */
+@media (prefers-color-scheme: dark) {
+  .login-card {
+    background: #2c2c2c;
+    color: #ffffff;
+  }
+
+  .form-control {
+    background: #3a3a3a;
+    border-color: #555;
+    color: #ffffff;
+  }
+
+  .form-control:focus {
+    border-color: #4dabf7;
+    box-shadow: 0 0 8px rgba(77, 171, 247, 0.3);
+  }
+
+  .form-label {
+    color: #ffffff;
+  }
+}

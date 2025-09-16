@@ -1,0 +1,103 @@
+.home-wrapper {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #f0f4f8 0%, #d9e2ec 100%);
+  padding: 20px;
+}
+
+.home-container {
+  max-width: 900px;
+  width: 100%;
+  text-align: center;
+}
+
+.home-title {
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 2rem;
+  font-weight: 600;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.squares-container {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.square {
+  width: 250px;
+  height: 250px;
+  background-color: #ffffff;
+  border-radius: 15px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.square:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.2);
+}
+
+.square:focus {
+  outline: 2px solid #007bff;
+  outline-offset: 4px;
+}
+
+.home-button {
+  width: 60%;
+  padding: 15px;
+  font-size: 1.2rem;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  color: white;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+}
+
+.home-button:hover {
+  transform: scale(1.05);
+}
+
+.home-button:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.3);
+}
+
+.home-button-point {
+  background: linear-gradient(45deg, #007bff, #00c4ff);
+}
+
+.home-button-point:hover {
+  background: linear-gradient(45deg, #0056b3, #0096cc);
+}
+
+.home-button-calendar {
+  background: linear-gradient(45deg, #28a745, #34c759);
+}
+
+.home-button-calendar:hover {
+  background: linear-gradient(45deg, #1e7e34, #28a745);
+}
+
+@media (max-width: 600px) {
+  .home-title {
+    font-size: 1.8rem;
+  }
+
+  .square {
+    width: 200px;
+    height: 200px;
+  }
+
+  .home-button {
+    font-size: 1rem;
+    padding: 12px;
+  }
+}

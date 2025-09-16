@@ -1,0 +1,1 @@
+Pra acessar o banco de dados e so usar o comando sqlite3 data/pcp.db via Terminal/Powershell dentro da pasta do backend.
