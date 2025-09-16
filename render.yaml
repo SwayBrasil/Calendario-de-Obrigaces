@@ -1,7 +1,7 @@
 services:
   - type: web
     name: pcp-backend
-    runtime: node
+    env: node
     plan: starter
     region: oregon
     buildCommand: |
@@ -16,22 +16,22 @@ services:
       - key: DATA_DIR
         value: /var/data
       - key: FRONTEND_URL
-        value: https://pcp-frontend.onrender.com  # altere depois para a URL real do seu frontend
+        value: https://pcp-frontend.onrender.com
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
-        # opcional: cole o JSON da conta de serviço aqui OU adicione depois pelo painel
         sync: false
     disks:
       - name: pcp-data
         mountPath: /var/data
         sizeGB: 5
 
-  - type: static
+  - type: web
     name: pcp-frontend
+    env: static
     buildCommand: |
       cd frontend
       npm ci
       npm run build
-    publishPath: frontend/dist
+    staticPublishPath: frontend/dist
     envVars:
       - key: VITE_API_URL
-        value: https://pcp-backend.onrender.com  # altere depois para a URL real do backend
+        value: https://pcp-backend.onrender.com
