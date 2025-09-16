@@ -14,15 +14,9 @@ services:
       - key: NODE_VERSION
         value: 20
       - key: DATA_DIR
-        value: /var/data
+        value: /tmp  # sem disco, usa /tmp efêmero
       - key: FRONTEND_URL
         value: https://pcp-frontend.onrender.com
-      - key: FIREBASE_SERVICE_ACCOUNT_JSON
-        sync: false
-    disks:
-      - name: pcp-data
-        mountPath: /var/data
-        sizeGB: 5
 
   - type: web
     name: pcp-frontend
