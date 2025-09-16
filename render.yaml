@@ -35,4 +35,3 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://pcp-backend.onrender.com  # altere depois para a URL real do backend
-
