@@ -29,12 +29,17 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Configurar CORS para permitir requisições do frontend
-app.use(cors({
-  origin: [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
-  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
-  allowedHeaders: ['Content-Type','Authorization'],
-  credentials: true
-}));
+// Compat: aceita requests que chegaram como /api/:splat (rewrite errado no Static Site)
+app.use((req, res, next) => {
+  // só mexe se começar exatamente com "/api/:"
+  if (req.path.startsWith('/api/:')) {
+    const fixedUrl = req.originalUrl.replace('/api/:', '/api/'); // ex.: /api/:login -> /api/login
+    console.warn(`[REWRITE-FIX] Corrigindo rota '${req.originalUrl}' -> '${fixedUrl}'`);
+    req.url = fixedUrl; // redireciona internamente para a rota express correta
+  }
+  next();
+});
+
 
 // Middleware para parsear JSON
 app.use(express.json());
