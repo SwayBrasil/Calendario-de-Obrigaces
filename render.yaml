@@ -1,9 +1,14 @@
+volumes:
+  - name: pcp-data
+    sizeGB: 5
+
 services:
   - type: web
     name: pcp-backend
     env: node
     plan: standard
     region: oregon
+    autoDeploy: true
     buildCommand: |
       cd backend
       npm ci
@@ -17,16 +22,16 @@ services:
         value: /var/data
       - key: FRONTEND_URL
         value: https://pcp-frontend.onrender.com
-    volumes:
-      - name: pcp-data
-        mountPath: /var/data
-        sizeGB: 5
+    mounts:
+      - volumeName: pcp-data
+        path: /var/data
 
   - type: web
     name: pcp-frontend
     env: static
     plan: starter
     region: oregon
+    autoDeploy: true
     buildCommand: |
       cd frontend
       npm ci
