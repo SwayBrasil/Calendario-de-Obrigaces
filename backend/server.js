@@ -29,7 +29,6 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Configurar CORS para permitir requisições do frontend
-import cors from 'cors';
 app.use(cors({
   origin: [process.env.FRONTEND_URL, 'http://localhost:5173', 'http://localhost:3000'].filter(Boolean),
   methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
