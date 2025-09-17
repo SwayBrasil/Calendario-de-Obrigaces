@@ -1,28 +1,37 @@
 // src/utils/axiosConfig.js
 import axios from 'axios';
 
+// Detecta ambiente (prod = onrender.com ou https)
 const isProd = typeof window !== 'undefined' &&
   (window.location.hostname.includes('onrender.com') ||
    window.location.protocol === 'https:');
 
-// base SEM /api. A rota /api entra só nos caminhos das requisições.
-const baseURL = isProd
-  ? window.location.origin              // ex.: https://projeto-calendario.onrender.com
-  : 'http://localhost:3001';            // dev local
+// Base URL SEM "/api". O prefixo /api entra apenas nas rotas chamadas.
+const defaultBaseURL = isProd
+  ? window.location.origin               // ex: https://calendario-de-obrigacoes.onrender.com
+  : 'http://localhost:3001';             // dev local
 
+// Instância principal do axios
 const axiosInstance = axios.create({
-  baseURL: baseURL.replace(/\/+$/, ''),
+  baseURL: defaultBaseURL.replace(/\/+$/, ''), // remove barras finais
   timeout: 15000,
 });
 
-// DEBUG opcional: logar base e caminho de cada request
+// Interceptor de request → adiciona token e log
 axiosInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
-  console.log('[axios] baseURL:', axiosInstance.defaults.baseURL, '→', config.method?.toUpperCase(), config.url);
+  console.log(
+    '[axios] baseURL:',
+    axiosInstance.defaults.baseURL,
+    '→',
+    config.method?.toUpperCase(),
+    config.url
+  );
   return config;
 }, (e) => Promise.reject(e));
 
+// Interceptor de response → trata erros comuns
 axiosInstance.interceptors.response.use(
   (res) => res,
   (error) => {
@@ -45,6 +54,7 @@ axiosInstance.interceptors.response.use(
 
 export default axiosInstance;
 
+// Permite alterar dinamicamente a base (ex.: para testes)
 export const setApiBase = (url) => {
   axiosInstance.defaults.baseURL = `${url}`.replace(/\/+$/, '');
   console.info('[axios] baseURL alterada para', axiosInstance.defaults.baseURL);
