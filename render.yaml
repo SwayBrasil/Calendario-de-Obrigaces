@@ -2,7 +2,7 @@ services:
   - type: web
     name: pcp-backend
     env: node
-    plan: standard     # plano pago para permitir disco
+    plan: standard
     region: oregon
     buildCommand: |
       cd backend
@@ -17,7 +17,7 @@ services:
         value: /var/data
       - key: FRONTEND_URL
         value: https://pcp-frontend.onrender.com
-    disks:
+    volumes:
       - name: pcp-data
         mountPath: /var/data
         sizeGB: 5
@@ -25,6 +25,8 @@ services:
   - type: web
     name: pcp-frontend
     env: static
+    plan: starter
+    region: oregon
     buildCommand: |
       cd frontend
       npm ci
