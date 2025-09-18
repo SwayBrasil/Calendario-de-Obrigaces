@@ -34,16 +34,16 @@ app.use((req, res, next) => {
 
 // Importar funções do SQLite
 const {
-    // Arquivos
-    insertFile, getFilesByTaskId, getFileById, deleteFile, incrementDownloadCount, logFileActivity, uploadsDir,
-    // Usuários
-    upsertUser, getUserByUid, getUserByEmail, getAllUsers, deleteUser,
-    // Tarefas
-    createTask, getTaskById, getAllTasks, getTasksByUser, updateTaskStatus, updateTask, deleteTask,
-    // Horas trabalhadas
-    upsertHorasTrabalhadas, getHorasTrabalhadasByUserAndPeriod,
-    // Logs
-    insertActivityLog, getActivityLog
+  // Arquivos
+  insertFile, getFilesByTaskId, getFileById, deleteFile, incrementDownloadCount, logFileActivity, uploadsDir,
+  // Usuários
+  upsertUser, getUserByUid, getUserByEmail, getAllUsers, deleteUser,
+  // Tarefas
+  createTask, getTaskById, getAllTasks, getTasksByUser, updateTaskStatus, updateTask, deleteTask,
+  // Horas trabalhadas
+  upsertHorasTrabalhadas, getHorasTrabalhadasByUserAndPeriod,
+  // Logs
+  insertActivityLog, getActivityLog
 } = require('./database');
 
 // Importar script da agenda tributária
@@ -52,21 +52,15 @@ const { criarTarefasMes, criarTarefasAnoCompleto, OBRIGACOES_TRIBUTARIAS } = req
 // Importar sistema automatizado da agenda tributária
 const { criarTarefasComDadosAPI, buscarAgendaTributariaAtualizada, AGENDA_TRIBUTARIA_COMPLETA } = require('./scripts/agenda-tributaria-api');
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-// Configurar CORS para permitir requisições do frontend
 // Compat: aceita requests que chegaram como /api/:splat (rewrite errado no Static Site)
 app.use((req, res, next) => {
-  // só mexe se começar exatamente com "/api/:"
   if (req.path.startsWith('/api/:')) {
     const fixedUrl = req.originalUrl.replace('/api/:', '/api/'); // ex.: /api/:login -> /api/login
     console.warn(`[REWRITE-FIX] Corrigindo rota '${req.originalUrl}' -> '${fixedUrl}'`);
-    req.url = fixedUrl; // redireciona internamente para a rota express correta
+    req.url = fixedUrl;
   }
   next();
 });
-
 
 // Middleware para parsear JSON
 app.use(express.json());
@@ -76,14 +70,13 @@ app.use((req, res, next) => {
   console.log(`[REQUEST] ${req.method} ${req.path} at ${new Date().toISOString()}`);
   next();
 });
-// --- COLE isto próximo do topo do server.js (antes de authenticateToken) ---
+
+// --- Firebase Admin (opcional, se tiver credenciais configuradas) ---
 let admin;
 try {
   admin = require('firebase-admin');
 
   if (!admin.apps.length) {
-    // tenta inicializar: usa credencial padrão do ambiente
-    // ou JSON vindo de FIREBASE_SERVICE_ACCOUNT_JSON
     if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
       const svc = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
       admin.initializeApp({ credential: admin.credential.cert(svc) });
@@ -95,9 +88,8 @@ try {
   }
 } catch (e) {
   console.warn('[AUTH] firebase-admin não disponível. Usando apenas tokens mock.', e.message);
-  admin = null; // garante que não será usado adiante
+  admin = null;
 }
-
 
 // --- SUBSTITUA sua função inteira por esta ---
 const authenticateToken = async (req, res, next) => {
