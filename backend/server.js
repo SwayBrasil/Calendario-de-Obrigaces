@@ -71,26 +71,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- Firebase Admin (opcional, se tiver credenciais configuradas) ---
-let admin;
-try {
-  admin = require('firebase-admin');
-
-  if (!admin.apps.length) {
-    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-      const svc = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-      admin.initializeApp({ credential: admin.credential.cert(svc) });
-      console.log('[AUTH] Firebase Admin inicializado via SERVICE_ACCOUNT_JSON');
-    } else {
-      admin.initializeApp({ credential: admin.credential.applicationDefault() });
-      console.log('[AUTH] Firebase Admin inicializado via credencial padrão');
-    }
-  }
-} catch (e) {
-  console.warn('[AUTH] firebase-admin não disponível. Usando apenas tokens mock.', e.message);
-  admin = null;
-}
-
 // --- SUBSTITUA sua função inteira por esta ---
 const authenticateToken = async (req, res, next) => {
   try {
