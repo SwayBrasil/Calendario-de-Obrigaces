@@ -32,7 +32,8 @@ const GerenciarUsuarios = () => {
   const carregarUsuarios = async () => {
     try {
       setLoading(true);
-      const resp = await axiosInstance.get('/usuarios');
+      console.log('🔄 Carregando usuários...');
+      const resp = await axiosInstance.get('/api/usuarios');
       setUsuarios(resp.data || []);
       setError('');
     } catch (err) {
@@ -55,7 +56,7 @@ const GerenciarUsuarios = () => {
 
   const salvarEdicao = async (usuarioId) => {
     try {
-      await axiosInstance.put(`/usuarios/${usuarioId}`, editForm);
+      await axiosInstance.put(`/api/usuarios/${usuarioId}`, editForm);
       await carregarUsuarios();
       cancelarEdicao();
     } catch (err) {
@@ -68,7 +69,7 @@ const GerenciarUsuarios = () => {
     if (!window.confirm(`Tem certeza que deseja remover o usuário "${nomeUsuario}"?`)) return;
 
     try {
-      await axiosInstance.delete(`/usuarios/${usuarioId}`);
+      await axiosInstance.delete(`/api/usuarios/${usuarioId}`);
       await carregarUsuarios();
     } catch (err) {
       console.error('Erro ao remover usuário:', err);
