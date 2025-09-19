@@ -374,14 +374,10 @@ const Calendario = () => {
       const createdTask = await taskService.create(taskData);
       await logActivity("create_task", createdTask.id, taskData.titulo);
       
-      // Atualizar lista local de tarefas
-      const formattedTask = {
-        ...createdTask,
-        dataVencimento: new Date(createdTask.dataVencimento),
-        dataCriacao: new Date(createdTask.dataCriacao),
-        comprovantes: createdTask.comprovantes || [],
-      };
-      setTasks(prev => [...prev, formattedTask]);
+      // Recarregar tarefas do servidor para garantir sincronização
+      console.log('[CREATE TASK] Recarregando lista de tarefas do servidor...');
+      await fetchTasks();
+      console.log('[CREATE TASK] Lista de tarefas recarregada!');
       
       setShowTaskModal(false);
       setNewTask({
@@ -493,21 +489,20 @@ const Calendario = () => {
       const updatedTask = await taskService.update(editTask.id, taskData);
       await logActivity("edit_task", editTask.id, taskData.titulo);
       
-      // Atualizar lista local de tarefas
-      const formattedTask = {
-        ...updatedTask,
-        dataVencimento: new Date(updatedTask.dataVencimento),
-        dataCriacao: new Date(updatedTask.dataCriacao),
-        comprovantes: updatedTask.comprovantes || [],
-      };
-      
-      setTasks(prev => prev.map(t => 
-        t.id === editTask.id ? formattedTask : t
-      ));
+      // Recarregar tarefas do servidor para garantir sincronização
+      console.log('[UPDATE TASK] Recarregando lista de tarefas do servidor...');
+      await fetchTasks();
+      console.log('[UPDATE TASK] Lista de tarefas recarregada!');
       
       // Atualizar tarefa selecionada se for a mesma
       if (selectedTask && selectedTask.id === editTask.id) {
-        setSelectedTask(formattedTask);
+        const updatedSelectedTask = {
+          ...updatedTask,
+          dataVencimento: new Date(updatedTask.dataVencimento),
+          dataCriacao: new Date(updatedTask.dataCriacao),
+          comprovantes: updatedTask.comprovantes || [],
+        };
+        setSelectedTask(updatedSelectedTask);
       }
       
       setShowEditTaskModal(false);
@@ -1531,6 +1526,12 @@ const Calendario = () => {
         tipo: 'mes',
         dados: response.data
       });
+      
+      // Recarregar tarefas após criação bem-sucedida
+      console.log('[AGENDA-TRIBUTARIA] Recarregando lista de tarefas após criação do mês...');
+      await fetchTasks();
+      console.log('[AGENDA-TRIBUTARIA] Lista de tarefas recarregada!');
+      
     } catch (error) {
       console.error('Erro ao criar tarefas do mês:', error);
       setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas do mês');
@@ -1563,6 +1564,12 @@ const Calendario = () => {
         tipo: 'ano',
         dados: response.data
       });
+      
+      // Recarregar tarefas após criação bem-sucedida
+      console.log('[AGENDA-TRIBUTARIA] Recarregando lista de tarefas após criação do ano...');
+      await fetchTasks();
+      console.log('[AGENDA-TRIBUTARIA] Lista de tarefas recarregada!');
+      
     } catch (error) {
       console.error('Erro ao criar tarefas do ano:', error);
       setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas do ano');
@@ -1585,6 +1592,12 @@ const Calendario = () => {
         tipo: 'proximo-mes',
         dados: response.data
       });
+      
+      // Recarregar tarefas após criação bem-sucedida
+      console.log('[AGENDA-TRIBUTARIA] Recarregando lista de tarefas após criação do próximo mês...');
+      await fetchTasks();
+      console.log('[AGENDA-TRIBUTARIA] Lista de tarefas recarregada!');
+      
     } catch (error) {
       console.error('Erro ao criar tarefas do próximo mês:', error);
       setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas do próximo mês');
