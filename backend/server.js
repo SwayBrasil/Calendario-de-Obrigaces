@@ -16,17 +16,23 @@ const allowedOrigins = [
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+  console.log(`[CORS] Request from origin: ${origin}`);
+  console.log(`[CORS] Method: ${req.method}`);
+  console.log(`[CORS] Path: ${req.path}`);
+  
   if (!origin || allowedOrigins.includes(origin)) {
     res.header("Access-Control-Allow-Origin", origin || "*");
   }
   res.header("Vary", "Origin");
   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.header("Access-Control-Max-Age", "3600"); // Cache preflight por 1 hora
   // Se for usar cookies/sessão cross-site, habilite também:
   // res.header("Access-Control-Allow-Credentials", "true");
 
   if (req.method === "OPTIONS") {
-    return res.sendStatus(204); // responde preflight
+    console.log('[CORS] Preflight request handled');
+    return res.status(200).end(); // responde preflight com status 200
   }
   next();
 });
@@ -71,24 +77,33 @@ app.use((req, res, next) => {
   next();
 });
 
-// --- SUBSTITUA sua função inteira por esta ---
+// Função de autenticação simplificada usando apenas mock tokens
 const authenticateToken = async (req, res, next) => {
   try {
+    console.log(`[AUTH] Authenticating request to ${req.method} ${req.path}`);
     const authHeader = req.headers.authorization || '';
+    console.log(`[AUTH] Authorization header: ${authHeader ? 'Present' : 'Missing'}`);
+    
     if (!authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Token não fornecido' });
+      console.log('[AUTH] Token format invalid');
+      return res.status(401).json({ error: 'Token não fornecido ou formato inválido' });
     }
     const token = authHeader.slice(7);
+    console.log(`[AUTH] Token extracted: ${token.substring(0, 20)}...`);
 
-    // 1) Token mock para desenvolvimento/teste
+    // Verificar se é um token mock válido
     if (token.startsWith('mock-token-')) {
+      console.log('[AUTH] Processing mock token');
       const uid = token.substring('mock-token-'.length);
+      console.log(`[AUTH] Extracted UID from mock token: ${uid}`);
 
       const userData = await getUserByUid(uid);
       if (!userData) {
+        console.log(`[AUTH] User not found for UID: ${uid}`);
         return res.status(401).json({ error: 'Usuário não encontrado' });
       }
 
+      console.log(`[AUTH] User authenticated: ${userData.email} (${userData.cargo})`);
       req.user = {
         uid: userData.uid,
         email: userData.email,
@@ -98,23 +113,13 @@ const authenticateToken = async (req, res, next) => {
       return next();
     }
 
-    // 2) Token Firebase (só se firebase-admin estiver configurado)
-    if (admin && admin.auth) {
-      try {
-        const decoded = await admin.auth().verifyIdToken(token);
-        req.user = { uid: decoded.uid, email: decoded.email || '' };
-        return next();
-      } catch (e) {
-        return res.status(401).json({ error: 'Token inválido' });
-      }
-    }
-
-    // 3) Sem firebase-admin disponível → não dá pra validar token real
-    return res.status(401).json({ error: 'Autenticação via Firebase não disponível neste ambiente. Use mock-token-<UID> para teste.' });
+    // Token não reconhecido
+    console.log('[AUTH] Token format not recognized');
+    return res.status(401).json({ error: 'Formato de token inválido. Use mock-token-<UID> para autenticação.' });
 
   } catch (err) {
     console.error('[AUTH] Erro inesperado:', err);
-    return res.status(500).json({ error: 'Erro na autenticação' });
+    return res.status(500).json({ error: 'Erro na autenticação: ' + err.message });
   }
 };
 
@@ -926,22 +931,33 @@ app.put("/api/tarefas/:id", authenticateToken, async (req, res) => {
 app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
+    console.log(`[DELETE TASK] Iniciando exclusão da tarefa: ${id}`);
+    console.log(`[DELETE TASK] Usuário autenticado: ${req.user.email} (UID: ${req.user.uid})`);
     
     // Verificar se é admin
     const user = await getUserByUid(req.user.uid);
+    console.log(`[DELETE TASK] Dados do usuário: ${user ? JSON.stringify({email: user.email, cargo: user.cargo}) : 'Não encontrado'}`);
+    
     if (!user || user.cargo !== 'admin') {
+      console.log(`[DELETE TASK] Acesso negado - usuário não é admin`);
       return res.status(403).json({ error: "Apenas administradores podem excluir tarefas" });
     }
     
     // Buscar a tarefa para log
     const task = await getTaskById(id);
+    console.log(`[DELETE TASK] Tarefa encontrada: ${task ? task.titulo : 'Não encontrada'}`);
+    
     if (!task) {
+      console.log(`[DELETE TASK] Tarefa ${id} não encontrada no banco`);
       return res.status(404).json({ error: "Tarefa não encontrada" });
     }
     
-    await deleteTask(id);
+    console.log(`[DELETE TASK] Executando exclusão da tarefa ${id}`);
+    const deleteResult = await deleteTask(id);
+    console.log(`[DELETE TASK] Resultado da exclusão:`, deleteResult);
     
     // Log da atividade
+    console.log(`[DELETE TASK] Registrando log de atividade`);
     await insertActivityLog({
       userId: req.user.uid,
       userEmail: req.user.email,
@@ -950,11 +966,19 @@ app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
       taskTitle: task.titulo
     });
     
-    console.log('Tarefa deletada com sucesso:', id);
-    res.status(200).json({ message: "Tarefa deletada com sucesso" });
+    console.log(`[DELETE TASK] Tarefa ${id} deletada com sucesso`);
+    res.status(200).json({ 
+      message: "Tarefa deletada com sucesso",
+      deletedTaskId: id,
+      deletedTaskTitle: task.titulo
+    });
   } catch (error) {
-    console.error("Erro ao deletar tarefa:", error.message);
-    res.status(500).json({ error: "Erro ao deletar tarefa: " + error.message });
+    console.error(`[DELETE TASK] Erro ao deletar tarefa ${req.params.id}:`, error);
+    console.error(`[DELETE TASK] Stack trace:`, error.stack);
+    res.status(500).json({ 
+      error: "Erro ao deletar tarefa: " + error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 });
 
