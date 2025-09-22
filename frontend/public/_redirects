@@ -1,0 +1,8 @@
+# Redirects for React Router (SPA)
+# This ensures all routes are handled by index.html for client-side routing
+
+# API routes should pass through to backend
+/api/* https://calendario-backend.onrender.com/api/* 200
+
+# All other routes should serve index.html (React Router handles client-side routing)
+/*    /index.html   200
