@@ -374,14 +374,10 @@ const Calendario = () => {
       const createdTask = await taskService.create(taskData);
       await logActivity("create_task", createdTask.id, taskData.titulo);
       
-      // Atualizar lista local de tarefas
-      const formattedTask = {
-        ...createdTask,
-        dataVencimento: new Date(createdTask.dataVencimento),
-        dataCriacao: new Date(createdTask.dataCriacao),
-        comprovantes: createdTask.comprovantes || [],
-      };
-      setTasks(prev => [...prev, formattedTask]);
+      // Recarregar tarefas do servidor para garantir sincronização
+      console.log('[CREATE TASK] Recarregando lista de tarefas do servidor...');
+      await fetchTasks();
+      console.log('[CREATE TASK] Lista de tarefas recarregada!');
       
       setShowTaskModal(false);
       setNewTask({
@@ -493,21 +489,20 @@ const Calendario = () => {
       const updatedTask = await taskService.update(editTask.id, taskData);
       await logActivity("edit_task", editTask.id, taskData.titulo);
       
-      // Atualizar lista local de tarefas
-      const formattedTask = {
-        ...updatedTask,
-        dataVencimento: new Date(updatedTask.dataVencimento),
-        dataCriacao: new Date(updatedTask.dataCriacao),
-        comprovantes: updatedTask.comprovantes || [],
-      };
-      
-      setTasks(prev => prev.map(t => 
-        t.id === editTask.id ? formattedTask : t
-      ));
+      // Recarregar tarefas do servidor para garantir sincronização
+      console.log('[UPDATE TASK] Recarregando lista de tarefas do servidor...');
+      await fetchTasks();
+      console.log('[UPDATE TASK] Lista de tarefas recarregada!');
       
       // Atualizar tarefa selecionada se for a mesma
       if (selectedTask && selectedTask.id === editTask.id) {
-        setSelectedTask(formattedTask);
+        const updatedSelectedTask = {
+          ...updatedTask,
+          dataVencimento: new Date(updatedTask.dataVencimento),
+          dataCriacao: new Date(updatedTask.dataCriacao),
+          comprovantes: updatedTask.comprovantes || [],
+        };
+        setSelectedTask(updatedSelectedTask);
       }
       
       setShowEditTaskModal(false);
@@ -530,23 +525,72 @@ const Calendario = () => {
   };
 
   const handleDeleteTask = async (id) => {
+    console.log('[DELETE] Iniciando exclusão da tarefa:', id);
+    console.log('[DELETE] isAdmin:', isAdmin);
+    console.log('[DELETE] User:', user);
+    
     // Verificar se o usuário é admin para poder excluir tarefas
     if (!isAdmin) {
+      console.log('[DELETE] Acesso negado - usuário não é admin');
       alert("Apenas administradores podem excluir tarefas.");
       return;
     }
     
-    if (window.confirm("Tem certeza de que deseja excluir esta tarefa?")) {
+    const task = tasks.find((t) => t.id === id);
+    console.log('[DELETE] Tarefa encontrada:', task?.titulo || 'Não encontrada');
+    
+    if (window.confirm(`Tem certeza de que deseja excluir a tarefa "${task?.titulo || 'Tarefa'}"?`)) {
       try {
-        const task = tasks.find((t) => t.id === id);
-        await taskService.delete(id);
+        console.log('[DELETE] Chamando taskService.delete...');
+        const response = await taskService.delete(id);
+        console.log('[DELETE] Resposta do servidor:', response);
+        
+        console.log('[DELETE] Registrando log de atividade...');
         await logActivity("delete_task", id, task?.titulo || "Tarefa");
-        setTasks((prev) => prev.filter((t) => t.id !== id));
-        setShowTaskDetails(false);
-        setSelectedTask(null);
+        
+        console.log('[DELETE] Atualizando lista de tarefas localmente...');
+        setTasks((prev) => {
+          const newTasks = prev.filter((t) => t.id !== id);
+          console.log(`[DELETE] Tarefas antes: ${prev.length}, depois: ${newTasks.length}`);
+          return newTasks;
+        });
+        
+        // Fechar modal se a tarefa excluída estava sendo visualizada
+        if (selectedTask?.id === id) {
+          console.log('[DELETE] Fechando modal da tarefa excluída');
+          setShowTaskDetails(false);
+          setSelectedTask(null);
+        }
+        
+        console.log('[DELETE] Tarefa excluída com sucesso!');
+        
+        // Recarregar a lista de tarefas do servidor para garantir sincronização
+        setTimeout(() => {
+          console.log('[DELETE] Recarregando lista de tarefas do servidor...');
+          fetchTasks();
+        }, 1000);
+        
       } catch (error) {
-        console.error("Erro ao excluir tarefa:", error);
-        alert("Erro ao excluir tarefa. Tente novamente.");
+        console.error('[DELETE] Erro detalhado ao excluir tarefa:', error);
+        console.error('[DELETE] Error response:', error.response?.data);
+        console.error('[DELETE] Error status:', error.response?.status);
+        console.error('[DELETE] Error headers:', error.response?.headers);
+        
+        let errorMessage = "Erro ao excluir tarefa.";
+        
+        if (error.response?.status === 401) {
+          errorMessage = "Erro de autenticação. Faça login novamente.";
+        } else if (error.response?.status === 403) {
+          errorMessage = "Você não tem permissão para excluir esta tarefa.";
+        } else if (error.response?.status === 404) {
+          errorMessage = "Tarefa não encontrada. Pode já ter sido excluída.";
+        } else if (error.response?.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        alert(`${errorMessage} Detalhes do erro foram registrados no console.`);
       }
     }
   };
@@ -1482,6 +1526,12 @@ const Calendario = () => {
         tipo: 'mes',
         dados: response.data
       });
+      
+      // Recarregar tarefas após criação bem-sucedida
+      console.log('[AGENDA-TRIBUTARIA] Recarregando lista de tarefas após criação do mês...');
+      await fetchTasks();
+      console.log('[AGENDA-TRIBUTARIA] Lista de tarefas recarregada!');
+      
     } catch (error) {
       console.error('Erro ao criar tarefas do mês:', error);
       setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas do mês');
@@ -1514,6 +1564,12 @@ const Calendario = () => {
         tipo: 'ano',
         dados: response.data
       });
+      
+      // Recarregar tarefas após criação bem-sucedida
+      console.log('[AGENDA-TRIBUTARIA] Recarregando lista de tarefas após criação do ano...');
+      await fetchTasks();
+      console.log('[AGENDA-TRIBUTARIA] Lista de tarefas recarregada!');
+      
     } catch (error) {
       console.error('Erro ao criar tarefas do ano:', error);
       setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas do ano');
@@ -1536,6 +1592,12 @@ const Calendario = () => {
         tipo: 'proximo-mes',
         dados: response.data
       });
+      
+      // Recarregar tarefas após criação bem-sucedida
+      console.log('[AGENDA-TRIBUTARIA] Recarregando lista de tarefas após criação do próximo mês...');
+      await fetchTasks();
+      console.log('[AGENDA-TRIBUTARIA] Lista de tarefas recarregada!');
+      
     } catch (error) {
       console.error('Erro ao criar tarefas do próximo mês:', error);
       setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas do próximo mês');
