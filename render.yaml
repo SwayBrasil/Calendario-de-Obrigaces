@@ -4,7 +4,7 @@ volumes:
 
 services:
   - type: web
-    name: pcp-backend
+    name: calendario-backend
     env: node
     plan: standard
     region: oregon
@@ -21,13 +21,17 @@ services:
       - key: DATA_DIR
         value: /var/data
       - key: FRONTEND_URL
-        value: https://pcp-frontend.onrender.com
+        value: https://calendario-de-obrigacoes.onrender.com
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
     mounts:
       - volumeName: pcp-data
         path: /var/data
 
   - type: web
-    name: pcp-frontend
+    name: calendario-frontend
     env: static
     plan: starter
     region: oregon
@@ -37,6 +41,33 @@ services:
       npm ci
       npm run build
     staticPublishPath: frontend/dist
+    # Headers para melhor performance e segurança
+    headers:
+      - path: "/*"
+        headers:
+          - key: "Cache-Control"
+            value: "public, max-age=0, must-revalidate"
+      - path: "/static/*"
+        headers:
+          - key: "Cache-Control"
+            value: "public, max-age=31536000, immutable"
+      - path: "/assets/*"
+        headers:
+          - key: "Cache-Control"
+            value: "public, max-age=31536000, immutable"
+    # Configuração para SPA (Single Page Application)
+    routes:
+      # Permitir acesso direto a arquivos estáticos
+      - type: rewrite
+        source: "/static/*"
+        destination: "/static/*"
+      - type: rewrite
+        source: "/assets/*"
+        destination: "/assets/*"
+      # Servir index.html para todas as outras rotas (SPA fallback)
+      - type: rewrite
+        source: "/*"
+        destination: "/index.html"
     envVars:
       - key: VITE_API_URL
-        value: https://pcp-backend.onrender.com
+        value: https://calendario-backend.onrender.com
