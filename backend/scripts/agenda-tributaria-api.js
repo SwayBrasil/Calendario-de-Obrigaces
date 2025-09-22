@@ -1779,11 +1779,30 @@ async function criarTarefasMes(ano, mes, responsavelEmail = null, regimeTributar
     }
     
     if (!responsavel) {
+      console.log('🔍 Buscando usuário administrador no sistema...');
       const users = await getAllUsers();
+      console.log(`📋 Total de usuários no sistema: ${users.length}`);
+      
+      // Tentar encontrar um admin real primeiro
       responsavel = users.find(user => user.cargo === 'admin');
+      
       if (!responsavel) {
-        throw new Error('Nenhum usuário administrador encontrado no sistema');
+        // Se não encontrou admin, usar o usuário 'system' como fallback
+        console.log('⚠️ Nenhum admin encontrado, tentando usuário system...');
+        responsavel = users.find(user => user.uid === 'system');
+        
+        if (!responsavel) {
+          // Como último recurso, usar o primeiro usuário da lista
+          console.log('⚠️ Usuário system não encontrado, usando primeiro usuário disponível...');
+          responsavel = users[0];
+        }
       }
+      
+      if (!responsavel) {
+        throw new Error('Nenhum usuário disponível no sistema para ser responsável pelas tarefas');
+      }
+      
+      console.log(`👤 Usuário selecionado: ${responsavel.nome_completo || responsavel.email} (${responsavel.uid})`);
     }
     
     console.log(`✅ Responsável definido: ${responsavel.nome_completo} (${responsavel.email})`);
@@ -1811,6 +1830,12 @@ async function criarTarefasMes(ano, mes, responsavelEmail = null, regimeTributar
       const dataVencimento = new Date(ano, mes - 1, vencimento);
       const dataVencimentoUtil = ajustarDiaUtil(dataVencimento, feriados);
       
+      // Verificar se o responsável tem todos os campos necessários
+      if (!responsavel.uid || !responsavel.nome_completo) {
+        console.error(`❌ Dados insuficientes do responsável:`, responsavel);
+        throw new Error(`Usuário responsável com dados incompletos: uid=${responsavel.uid}, nome=${responsavel.nome_completo}`);
+      }
+      
       const taskData = {
         id: uuidv4(),
         titulo: obrigacao.titulo,
@@ -1826,6 +1851,11 @@ async function criarTarefasMes(ano, mes, responsavelEmail = null, regimeTributar
         recorrente: true,
         frequencia: 'mensal'
       };
+      
+      console.log(`📝 Criando tarefa "${obrigacao.titulo}" para responsável: ${responsavel.nome_completo} (${responsavel.uid})`);
+      console.log(`📅 Data de vencimento: ${dataVencimentoUtil.toLocaleDateString('pt-BR')}`);
+      console.log(`🆔 Task ID: ${taskData.id}`);
+      console.log(`👤 Responsável ID: ${taskData.responsavelId}`);
       
       try {
         await createTask(taskData);
