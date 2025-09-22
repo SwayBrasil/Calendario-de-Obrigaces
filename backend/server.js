@@ -45,7 +45,7 @@ const {
   // Usuários
   upsertUser, getUserByUid, getUserByEmail, getAllUsers, deleteUser,
   // Tarefas
-  createTask, getTaskById, getAllTasks, getTasksByUser, updateTaskStatus, updateTask, deleteTask,
+  createTask, getTaskById, getAllTasks, getTasksByUser, updateTaskStatus, updateTask, deleteTask, checkTaskDependencies,
   // Horas trabalhadas
   upsertHorasTrabalhadas, getHorasTrabalhadasByUserAndPeriod,
   // Logs
@@ -952,7 +952,12 @@ app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
       return res.status(404).json({ error: "Tarefa não encontrada" });
     }
     
-    console.log(`[DELETE TASK] Executando exclusão da tarefa ${id}`);
+    // Verificar dependências da tarefa
+    console.log(`[DELETE TASK] Verificando dependências da tarefa ${id}`);
+    const dependencies = await checkTaskDependencies(id);
+    console.log(`[DELETE TASK] Dependências encontradas:`, dependencies);
+    
+    console.log(`[DELETE TASK] Executando exclusão da tarefa ${id} com suas dependências`);
     const deleteResult = await deleteTask(id);
     console.log(`[DELETE TASK] Resultado da exclusão:`, deleteResult);
     
@@ -968,9 +973,15 @@ app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
     
     console.log(`[DELETE TASK] Tarefa ${id} deletada com sucesso`);
     res.status(200).json({ 
-      message: "Tarefa deletada com sucesso",
+      message: "Tarefa e todas suas dependências deletadas com sucesso",
       deletedTaskId: id,
-      deletedTaskTitle: task.titulo
+      deletedTaskTitle: task.titulo,
+      dependencies: {
+        arquivos: dependencies.arquivos,
+        arquivo_logs: dependencies.arquivo_logs,
+        atividade_logs: dependencies.atividade_logs
+      },
+      deletedFiles: deleteResult.deletedFiles || 0
     });
   } catch (error) {
     console.error(`[DELETE TASK] Erro ao deletar tarefa ${req.params.id}:`, error);
