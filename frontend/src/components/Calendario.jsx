@@ -1693,18 +1693,38 @@ const Calendario = () => {
 
       let response;
       
+      // Garantir responsável válido
+      let emailFinal = periodo.responsavelEmail || responsavelEmail;
+      
+      // Se ainda não temos email, usar o email do usuário admin atual
+      if (!emailFinal && user?.cargo === 'admin') {
+        emailFinal = user.email;
+        console.log('[AGENDA-API] Usando email do admin atual:', emailFinal);
+      }
+      
+      // Se ainda não temos email, buscar um usuário admin da lista
+      if (!emailFinal) {
+        const adminUser = usuarios.find(u => u.tipo === 'admin' || u.cargo === 'admin');
+        if (adminUser) {
+          emailFinal = adminUser.email || user?.email || `admin-${adminUser.id}@sistema.local`;
+          console.log('[AGENDA-API] Email admin encontrado na lista:', emailFinal);
+        }
+      }
+      
+      console.log('[AGENDA-API] Email final que será enviado à API:', emailFinal);
+      
       if (periodo.mes) {
         // Criar tarefas do mês usando API
         response = await agendaTributariaService.criarTarefasMesAPI(
           periodo.ano, 
           periodo.mes, 
-          responsavelEmail || undefined
+          emailFinal
         );
       } else {
         // Criar tarefas do ano usando API
         response = await agendaTributariaService.criarTarefasAnoAPI(
           periodo.ano, 
-          responsavelEmail || undefined
+          emailFinal
         );
       }
 
@@ -1729,16 +1749,59 @@ const Calendario = () => {
       
     } catch (error) {
       console.error('Erro ao criar tarefas com dados atualizados:', error);
-      setAgendaError(error.response?.data?.error || 'Erro ao criar tarefas com dados atualizados');
+      
+      // Tratamento de erros mais específico
+      let errorMessage = 'Erro ao criar tarefas com dados atualizados';
+      
+      if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+        
+        // Tratar erro de FOREIGN KEY de forma mais amigável
+        if (errorMessage.includes('FOREIGN KEY constraint failed')) {
+          errorMessage = 'Erro: Usuário responsável não encontrado no sistema. Verifique se existe um administrador cadastrado.';
+        } else if (errorMessage.includes('responsável com ID') && errorMessage.includes('não existe')) {
+          errorMessage = 'Erro: O usuário responsável não está cadastrado no sistema. Cadastre um administrador primeiro.';
+        }
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      console.log('[AGENDA-TRIBUTARIA] Erro processado:', errorMessage);
+      setAgendaError(errorMessage);
     } finally {
       setAgendaLoading(false);
     }
   };
 
   const criarTarefasMesAutomatizado = async () => {
+    // Garantir que temos um responsável válido antes de enviar
+    let emailResponsavel = responsavelEmail.trim();
+    
+    // Se não foi informado um email, usar o email do usuário admin atual
+    if (!emailResponsavel && user?.cargo === 'admin') {
+      emailResponsavel = user.email;
+      console.log('[AGENDA-TRIBUTARIA] Usando email do admin atual:', emailResponsavel);
+    }
+    
+    // Se ainda não temos email, buscar um usuário admin da lista
+    if (!emailResponsavel) {
+      const adminUser = usuarios.find(u => u.tipo === 'admin' || u.cargo === 'admin');
+      if (adminUser) {
+        // Buscar o email real do admin na lista de usuários
+        const adminEmail = usuarios.find(u => u.id === adminUser.id);
+        if (adminEmail) {
+          emailResponsavel = adminEmail.email || `admin-${adminUser.id}@sistema.local`;
+          console.log('[AGENDA-TRIBUTARIA] Email admin encontrado na lista:', emailResponsavel);
+        }
+      }
+    }
+    
+    console.log('[AGENDA-TRIBUTARIA] Email final que será enviado:', emailResponsavel);
+    
     await criarTarefasComDadosAtualizados({
       ano: selectedYear,
-      mes: selectedMonth
+      mes: selectedMonth,
+      responsavelEmail: emailResponsavel
     });
   };
 
@@ -1746,9 +1809,34 @@ const Calendario = () => {
     if (!window.confirm(`Tem certeza que deseja criar TODAS as tarefas automatizadas de ${selectedYear}? Isso criará tarefas com dados atualizados da API!`)) {
       return;
     }
+    
+    // Garantir que temos um responsável válido antes de enviar
+    let emailResponsavel = responsavelEmail.trim();
+    
+    // Se não foi informado um email, usar o email do usuário admin atual
+    if (!emailResponsavel && user?.cargo === 'admin') {
+      emailResponsavel = user.email;
+      console.log('[AGENDA-TRIBUTARIA] Usando email do admin atual:', emailResponsavel);
+    }
+    
+    // Se ainda não temos email, buscar um usuário admin da lista
+    if (!emailResponsavel) {
+      const adminUser = usuarios.find(u => u.tipo === 'admin' || u.cargo === 'admin');
+      if (adminUser) {
+        // Buscar o email real do admin na lista de usuários
+        const adminEmail = usuarios.find(u => u.id === adminUser.id);
+        if (adminEmail) {
+          emailResponsavel = adminEmail.email || `admin-${adminUser.id}@sistema.local`;
+          console.log('[AGENDA-TRIBUTARIA] Email admin encontrado na lista:', emailResponsavel);
+        }
+      }
+    }
+    
+    console.log('[AGENDA-TRIBUTARIA] Email final que será enviado:', emailResponsavel);
 
     await criarTarefasComDadosAtualizados({
-      ano: selectedYear
+      ano: selectedYear,
+      responsavelEmail: emailResponsavel
     });
   };
 
@@ -1859,12 +1947,17 @@ const Calendario = () => {
                   type="email"
                   value={responsavelEmail}
                   onChange={(e) => setResponsavelEmail(e.target.value)}
-                  placeholder="admin@empresa.com"
+                  placeholder={user?.email || "admin@empresa.com"}
                   className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para usar o primeiro administrador
-                </p>
+                <div className="mt-1 space-y-1">
+                  <p className="text-xs text-gray-500">
+                    Deixe vazio para usar seu email atual: <span className="font-medium text-blue-600">{user?.email}</span>
+                  </p>
+                  <p className="text-xs text-yellow-600">
+                    ⚠️ Certifique-se de que o responsável está cadastrado no sistema
+                  </p>
+                </div>
               </div>
             </div>
           </div>

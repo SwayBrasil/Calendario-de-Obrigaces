@@ -204,7 +204,15 @@ function createTask(taskData) {
         db.run(sql, [id, titulo, responsavel, responsavelId, dataVencimento || null, observacoes || null, recorrente, frequencia], function(err) {
             if (err) {
                 console.error(`❌ Erro ao inserir tarefa "${titulo}": ${err.message}`);
-                reject(err);
+                
+                // Dar mensagem de erro mais clara para FOREIGN KEY constraint
+                if (err.message.includes('FOREIGN KEY constraint failed')) {
+                    const error = new Error(`O responsável com ID "${responsavelId}" não existe no sistema. Verifique se o usuário está cadastrado.`);
+                    console.error(`❌ Erro de FOREIGN KEY: ResponsavelId "${responsavelId}" não encontrado`);
+                    reject(error);
+                } else {
+                    reject(err);
+                }
             } else {
                 console.log(`✅ Tarefa criada com sucesso: ${titulo} (ID: ${id})`);
                 resolve({ id, ...taskData });
@@ -535,18 +543,141 @@ function updateTask(taskId, taskData) {
     });
 }
 
-// Função para deletar tarefa
+// Função para deletar tarefa com exclusão em cascata
 function deleteTask(taskId) {
     return new Promise((resolve, reject) => {
-        const sql = `DELETE FROM tarefas WHERE id = ?`;
-        db.run(sql, [taskId], function(err) {
-            if (err) {
-                console.error(`❌ Erro ao deletar tarefa ${taskId}: ${err.message}`);
-                reject(err);
-            } else {
-                console.log(`✅ Tarefa ${taskId} deletada`);
-                resolve({ deletedRows: this.changes });
+        console.log(`🗑️ Iniciando exclusão da tarefa ${taskId} com dependências...`);
+        
+        db.serialize(() => {
+            // Iniciar transação
+            db.run('BEGIN TRANSACTION', (err) => {
+                if (err) {
+                    console.error(`❌ Erro ao iniciar transação: ${err.message}`);
+                    return reject(err);
+                }
+                
+                // 1. Buscar arquivos da tarefa para deletar fisicamente
+                db.all('SELECT * FROM arquivos WHERE task_id = ?', [taskId], (errFiles, files) => {
+                    if (errFiles) {
+                        console.error(`❌ Erro ao buscar arquivos: ${errFiles.message}`);
+                        db.run('ROLLBACK');
+                        return reject(errFiles);
+                    }
+                    
+                    console.log(`📁 Encontrados ${files.length} arquivos para deletar`);
+                    
+                    // Deletar arquivos físicos
+                    files.forEach(file => {
+                        try {
+                            if (fs.existsSync(file.file_path)) {
+                                fs.unlinkSync(file.file_path);
+                                console.log(`🗑️ Arquivo físico deletado: ${file.original_name}`);
+                            }
+                        } catch (fsErr) {
+                            console.warn(`⚠️ Erro ao deletar arquivo físico ${file.original_name}: ${fsErr.message}`);
+                            // Não interrompe a operação por erro de arquivo físico
+                        }
+                    });
+                    
+                    // 2. Deletar logs de arquivos relacionados à tarefa
+                    db.run(`
+                        DELETE FROM arquivo_logs 
+                        WHERE arquivo_id IN (
+                            SELECT id FROM arquivos WHERE task_id = ?
+                        )
+                    `, [taskId], function(err1) {
+                        if (err1) {
+                            console.error(`❌ Erro ao deletar arquivo_logs: ${err1.message}`);
+                            db.run('ROLLBACK');
+                            return reject(err1);
+                        }
+                        console.log(`🗑️ ${this.changes} arquivo_logs deletados`);
+                        
+                        // 3. Deletar arquivos da tarefa do banco
+                        db.run('DELETE FROM arquivos WHERE task_id = ?', [taskId], function(err2) {
+                            if (err2) {
+                                console.error(`❌ Erro ao deletar arquivos: ${err2.message}`);
+                                db.run('ROLLBACK');
+                                return reject(err2);
+                            }
+                            console.log(`🗑️ ${this.changes} arquivos deletados do banco`);
+                            
+                            // 4. Deletar logs de atividade da tarefa
+                            db.run('DELETE FROM atividade_logs WHERE task_id = ?', [taskId], function(err3) {
+                                if (err3) {
+                                    console.error(`❌ Erro ao deletar atividade_logs: ${err3.message}`);
+                                    db.run('ROLLBACK');
+                                    return reject(err3);
+                                }
+                                console.log(`🗑️ ${this.changes} atividade_logs deletados`);
+                                
+                                // 5. Finalmente, deletar a tarefa
+                                db.run('DELETE FROM tarefas WHERE id = ?', [taskId], function(err4) {
+                                    if (err4) {
+                                        console.error(`❌ Erro ao deletar tarefa: ${err4.message}`);
+                                        db.run('ROLLBACK');
+                                        return reject(err4);
+                                    }
+                                    
+                                    // Confirmar transação
+                                    db.run('COMMIT', (err5) => {
+                                        if (err5) {
+                                            console.error(`❌ Erro ao confirmar transação: ${err5.message}`);
+                                            return reject(err5);
+                                        }
+                                        
+                                        console.log(`✅ Tarefa ${taskId} e todas suas dependências (${files.length} arquivos) deletadas com sucesso!`);
+                                        resolve({ deletedRows: this.changes, deletedFiles: files.length });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        });
+    });
+}
+
+// Função para verificar dependências de uma tarefa antes da exclusão
+function checkTaskDependencies(taskId) {
+    return new Promise((resolve, reject) => {
+        console.log(`🔍 Verificando dependências da tarefa ${taskId}...`);
+        
+        const dependencies = {
+            arquivos: 0,
+            arquivo_logs: 0,
+            atividade_logs: 0
+        };
+        
+        // Contar arquivos
+        db.get('SELECT COUNT(*) as count FROM arquivos WHERE task_id = ?', [taskId], (err1, result1) => {
+            if (err1) {
+                return reject(err1);
             }
+            dependencies.arquivos = result1.count;
+            
+            // Contar logs de arquivos
+            db.get(`
+                SELECT COUNT(*) as count FROM arquivo_logs 
+                WHERE arquivo_id IN (SELECT id FROM arquivos WHERE task_id = ?)
+            `, [taskId], (err2, result2) => {
+                if (err2) {
+                    return reject(err2);
+                }
+                dependencies.arquivo_logs = result2.count;
+                
+                // Contar logs de atividade
+                db.get('SELECT COUNT(*) as count FROM atividade_logs WHERE task_id = ?', [taskId], (err3, result3) => {
+                    if (err3) {
+                        return reject(err3);
+                    }
+                    dependencies.atividade_logs = result3.count;
+                    
+                    console.log(`📊 Dependências da tarefa ${taskId}:`, dependencies);
+                    resolve(dependencies);
+                });
+            });
         });
     });
 }
@@ -626,6 +757,7 @@ module.exports = {
     updateTaskStatus,
     updateTask,
     deleteTask,
+    checkTaskDependencies,
     insertActivityLog,
     getActivityLog: getActivityLogs,
     checkTaskExists
