@@ -43,7 +43,7 @@ app.use((req, res, next) => {
 // Importar funções do SQLite
 const {
   // Arquivos
-  insertFile, getFilesByTaskId, getFileById, deleteFile, incrementDownloadCount, logFileActivity, uploadsDir,
+  insertFile, getFilesByTaskId, getFileById, deleteFile, incrementDownloadCount, logFileActivity, deleteFileLogs, uploadsDir,
   // Usuários
   upsertUser, getUserByUid, getUserByEmail, getAllUsers, deleteUser,
   // Tarefas
@@ -822,13 +822,13 @@ app.patch("/api/tarefas/:id/status", authenticateToken, async (req, res) => {
     
     await updateTaskStatus(id, status);
     
-    // Log da atividade
+    // Log da atividade (sem FK para tarefa já deletada)
     await insertActivityLog({
       userId: req.user.uid,
       userEmail: req.user.email,
-      action: 'update_task_status',
-      taskId: id,
-      taskTitle: task.titulo
+      action: 'delete_task',
+      taskId: null, // evita violação de FK após deletar a tarefa
+      taskTitle: `${task.titulo} (id: ${id})`
     });
     
     console.log('Status da tarefa atualizado:', { id, status });
@@ -1260,17 +1260,26 @@ app.delete('/api/files/:fileId', authenticateToken, async (req, res) => {
       }
     }
     
+    // Registrar log de atividade (mantém histórico mesmo após remoção do arquivo)
+    await insertActivityLog({
+      userId: req.user.uid,
+      userEmail: req.user.email,
+      action: 'delete_file',
+      taskId: fileRecord.task_id || null,
+      taskTitle: `Arquivo: ${fileRecord.original_name} (id: ${fileId})`
+    });
+
+    // Remover logs do arquivo (FK) para permitir exclusão do registro do arquivo
+    await deleteFileLogs(fileId);
+
     // Remover arquivo físico
     if (fs.existsSync(fileRecord.file_path)) {
       fs.unlinkSync(fileRecord.file_path);
       console.log('[DELETE FILE] Arquivo físico removido:', fileRecord.file_path);
     }
     
-    // Remover do banco
+    // Remover do banco (registro do arquivo)
     await deleteFile(fileId);
-    
-    // Log da atividade
-    await logFileActivity(fileId, 'delete', req.user.uid);
     
     console.log('[DELETE FILE] Arquivo deletado com sucesso');
     res.status(200).json({ message: 'Arquivo deletado com sucesso' });

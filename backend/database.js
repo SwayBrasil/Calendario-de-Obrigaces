@@ -363,6 +363,22 @@ function logFileActivity(arquivoId, action, userId) {
     });
 }
 
+// Remover logs de um arquivo específico (para permitir exclusão do arquivo sem violar FK)
+function deleteFileLogs(fileId) {
+    return new Promise((resolve, reject) => {
+        const sql = `DELETE FROM arquivo_logs WHERE arquivo_id = ?`;
+        db.run(sql, [fileId], function(err) {
+            if (err) {
+                console.error(`❌ Erro ao deletar logs do arquivo ${fileId}: ${err.message}`);
+                reject(err);
+            } else {
+                console.log(`🗑️ ${this.changes} logs removidos para arquivo ${fileId}`);
+                resolve({ deletedRows: this.changes });
+            }
+        });
+    });
+}
+
 // Função para buscar usuário por email
 function getUserByEmail(email) {
     return new Promise((resolve, reject) => {
@@ -745,6 +761,7 @@ module.exports = {
     deleteFile,
     incrementDownloadCount,
     logFileActivity,
+    deleteFileLogs,
     upsertUser,
     getUserByUid,
     getUserByEmail,
