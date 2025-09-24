@@ -88,7 +88,7 @@ const ForgotPassword = () => {
       setError("");
 
       // Fazer uma verificação com o backend para obter a senha atual (hash)
-      const response = await axios.post(`${API_BASE_URL}/api/verify-old-password`, {
+      const response = await axiosInstance.post('/api/verify-old-password', {
         email,
         oldPassword
       });
@@ -147,7 +147,7 @@ const ForgotPassword = () => {
       setError("");
       setSuccessMessage("");
 
-      const response = await axios.post(`${API_BASE_URL}/api/change-password-direct`, {
+      const response = await axiosInstance.post('/api/change-password-direct', {
         email,
         newPassword
       });

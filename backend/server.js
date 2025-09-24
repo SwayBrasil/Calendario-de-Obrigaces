@@ -9,10 +9,12 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 /** >>> CORS <<< **/
+const frontendUrl = (process.env.FRONTEND_URL || "https://calendario-de-obrigacoes.onrender.com").replace(/\/+$/, '');
 const allowedOrigins = [
-  process.env.FRONTEND_URL || "https://calendario-de-obrigacoes.onrender.com",
+  frontendUrl,
   "http://localhost:5173",
 ];
+
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
