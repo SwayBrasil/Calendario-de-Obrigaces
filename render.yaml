@@ -24,8 +24,6 @@ services:
         value: https://calendario-de-obrigacoes.onrender.com
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
     mounts:
       - volumeName: pcp-data
         path: /var/data

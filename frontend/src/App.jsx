@@ -1,6 +1,6 @@
 import React, { useContext } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, AuthContext } from './AuthContext';
+import { AuthContext } from './AuthContext';
 import Login from './components/Login';
 import Cadastro from './components/Cadastro';
 import ForgotPassword from './components/ForgotPassword';
@@ -21,16 +21,14 @@ const ProtectedRoute = ({ children }) => {
 
 const App = () => {
   return (
-    <AuthProvider>
-      <Routes>
-        <Route path="/" element={<Login />} />
-        <Route path="/cadastro" element={<Cadastro />} />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-        <Route path="/calendario" element={<ProtectedRoute><Calendario /></ProtectedRoute>} />
-        <Route path="/gerenciar-usuarios" element={<ProtectedRoute><GerenciarUsuarios /></ProtectedRoute>} />
-      </Routes>
-    </AuthProvider>
+    <Routes>
+      <Route path="/" element={<Login />} />
+      <Route path="/cadastro" element={<Cadastro />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+      <Route path="/calendario" element={<ProtectedRoute><Calendario /></ProtectedRoute>} />
+      <Route path="/gerenciar-usuarios" element={<ProtectedRoute><GerenciarUsuarios /></ProtectedRoute>} />
+    </Routes>
   );
 };
 
