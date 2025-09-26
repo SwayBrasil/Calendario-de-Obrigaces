@@ -1778,11 +1778,22 @@ async function criarTarefasMes(ano, mes, responsavelEmail = null, regimeTributar
       }
     }
     
-    if (!responsavel) {
+  if (!responsavel) {
       const users = await getAllUsers();
+      // 1) Tentar um administrador real
       responsavel = users.find(user => user.cargo === 'admin');
+      // 2) Se não houver admin, tentar o usuário 'system' (semente criada no init)
       if (!responsavel) {
-        throw new Error('Nenhum usuário administrador encontrado no sistema');
+        console.warn('⚠️ Nenhum admin encontrado, tentando usuário system...');
+        responsavel = users.find(user => user.uid === 'system');
+      }
+      // 3) Como último recurso, usar o primeiro usuário disponível
+      if (!responsavel && users.length > 0) {
+        console.warn('⚠️ Usuário system não encontrado, usando primeiro usuário disponível...');
+        responsavel = users[0];
+      }
+      if (!responsavel) {
+        throw new Error('Nenhum usuário disponível no sistema para ser responsável pelas tarefas');
       }
     }
     
