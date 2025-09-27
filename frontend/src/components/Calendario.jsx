@@ -2089,29 +2089,9 @@ const Calendario = () => {
                 )}
               </div>
 
-              {agendaResultado.dados.detalhes && agendaResultado.dados.detalhes.erros && agendaResultado.dados.detalhes.erros.length > 0 && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-md">
-                  <h4 className="font-medium text-red-800 mb-2">Erros encontrados:</h4>
-                  <ul className="list-disc list-inside text-red-700 text-sm">
-                    {agendaResultado.dados.detalhes.erros.map((erro, index) => (
-                      <li key={index}>Mês {erro.mes}: {erro.erro}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
             </div>
           )}
 
-          {/* Erro */}
-          {agendaError && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-600" />
-                <span className="text-red-800 font-medium">Erro</span>
-              </div>
-              <p className="text-red-700 mt-1">{agendaError}</p>
-            </div>
-          )}
 
           {/* Obrigações */}
           {showObrigacoes && (
