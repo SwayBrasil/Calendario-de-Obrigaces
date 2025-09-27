@@ -565,8 +565,9 @@ function deleteTask(taskId) {
         console.log(`🗑️ Iniciando exclusão da tarefa ${taskId} com dependências...`);
         
         db.serialize(() => {
-            // Iniciar transação
-            db.run('BEGIN TRANSACTION', (err) => {
+            // Iniciar transação (e adiar checagens de FK até o commit)
+            db.run('PRAGMA defer_foreign_keys = ON');
+            db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
                 if (err) {
                     console.error(`❌ Erro ao iniciar transação: ${err.message}`);
                     return reject(err);
@@ -575,9 +576,9 @@ function deleteTask(taskId) {
                 // 1. Buscar arquivos da tarefa para deletar fisicamente
                 db.all('SELECT * FROM arquivos WHERE task_id = ?', [taskId], (errFiles, files) => {
                     if (errFiles) {
-                        console.error(`❌ Erro ao buscar arquivos: ${errFiles.message}`);
+                        console.error(`❌ [STEP files-select] ${errFiles.message}`);
                         db.run('ROLLBACK');
-                        return reject(errFiles);
+                        return reject(new Error(`[files-select] ${errFiles.message}`));
                     }
                     
                     console.log(`📁 Encontrados ${files.length} arquivos para deletar`);
@@ -594,52 +595,52 @@ function deleteTask(taskId) {
                             // Não interrompe a operação por erro de arquivo físico
                         }
                     });
-                    
-                    // 2. Deletar logs de arquivos relacionados à tarefa
-                    db.run(`
-                        DELETE FROM arquivo_logs 
-                        WHERE arquivo_id IN (
-                            SELECT id FROM arquivos WHERE task_id = ?
-                        )
-                    `, [taskId], function(err1) {
-                        if (err1) {
-                            console.error(`❌ Erro ao deletar arquivo_logs: ${err1.message}`);
+
+                    // 2. Deletar logs de atividade da tarefa (referenciam tarefas)
+                    db.run('DELETE FROM atividade_logs WHERE task_id = ?', [taskId], function(errAlog) {
+                        if (errAlog) {
+                            console.error(`❌ [STEP atividade_logs-delete] ${errAlog.message}`);
                             db.run('ROLLBACK');
-                            return reject(err1);
+                            return reject(new Error(`[atividade_logs-delete] ${errAlog.message}`));
                         }
-                        console.log(`🗑️ ${this.changes} arquivo_logs deletados`);
-                        
-                        // 3. Deletar arquivos da tarefa do banco
-                        db.run('DELETE FROM arquivos WHERE task_id = ?', [taskId], function(err2) {
-                            if (err2) {
-                                console.error(`❌ Erro ao deletar arquivos: ${err2.message}`);
+                        console.log(`🗑️ ${this.changes} atividade_logs deletados`);
+
+                        // 3. Deletar logs de arquivos relacionados à tarefa (referenciam arquivos)
+                        db.run(`
+                            DELETE FROM arquivo_logs 
+                            WHERE arquivo_id IN (
+                                SELECT id FROM arquivos WHERE task_id = ?
+                            )
+                        `, [taskId], function(errFlog) {
+                            if (errFlog) {
+                                console.error(`❌ [STEP arquivo_logs-delete] ${errFlog.message}`);
                                 db.run('ROLLBACK');
-                                return reject(err2);
+                                return reject(new Error(`[arquivo_logs-delete] ${errFlog.message}`));
                             }
-                            console.log(`🗑️ ${this.changes} arquivos deletados do banco`);
-                            
-                            // 4. Deletar logs de atividade da tarefa
-                            db.run('DELETE FROM atividade_logs WHERE task_id = ?', [taskId], function(err3) {
-                                if (err3) {
-                                    console.error(`❌ Erro ao deletar atividade_logs: ${err3.message}`);
+                            console.log(`🗑️ ${this.changes} arquivo_logs deletados`);
+
+                            // 4. Deletar arquivos da tarefa (filhos diretos)
+                            db.run('DELETE FROM arquivos WHERE task_id = ?', [taskId], function(errFilesDel) {
+                                if (errFilesDel) {
+                                    console.error(`❌ [STEP arquivos-delete] ${errFilesDel.message}`);
                                     db.run('ROLLBACK');
-                                    return reject(err3);
+                                    return reject(new Error(`[arquivos-delete] ${errFilesDel.message}`));
                                 }
-                                console.log(`🗑️ ${this.changes} atividade_logs deletados`);
-                                
-                                // 5. Finalmente, deletar a tarefa
-                                db.run('DELETE FROM tarefas WHERE id = ?', [taskId], function(err4) {
-                                    if (err4) {
-                                        console.error(`❌ Erro ao deletar tarefa: ${err4.message}`);
+                                console.log(`🗑️ ${this.changes} arquivos deletados do banco`);
+
+                                // 5. Finalmente, deletar a tarefa (pai)
+                                db.run('DELETE FROM tarefas WHERE id = ?', [taskId], function(errTaskDel) {
+                                    if (errTaskDel) {
+                                        console.error(`❌ [STEP tarefas-delete] ${errTaskDel.message}`);
                                         db.run('ROLLBACK');
-                                        return reject(err4);
+                                        return reject(new Error(`[tarefas-delete] ${errTaskDel.message}`));
                                     }
-                                    
+
                                     // Confirmar transação
-                                    db.run('COMMIT', (err5) => {
-                                        if (err5) {
-                                            console.error(`❌ Erro ao confirmar transação: ${err5.message}`);
-                                            return reject(err5);
+                                    db.run('COMMIT', (errCommit) => {
+                                        if (errCommit) {
+                                            console.error(`❌ [STEP commit] ${errCommit.message}`);
+                                            return reject(new Error(`[commit] ${errCommit.message}`));
                                         }
                                         
                                         console.log(`✅ Tarefa ${taskId} e todas suas dependências (${files.length} arquivos) deletadas com sucesso!`);
