@@ -559,17 +559,19 @@ function updateTask(taskId, taskData) {
     });
 }
 
-// Função para deletar tarefa com exclusão em cascata
+// Função para deletar tarefa com exclusão em cascata (robusta e sem erro de FK)
 function deleteTask(taskId) {
     return new Promise((resolve, reject) => {
         console.log(`🗑️ Iniciando exclusão da tarefa ${taskId} com dependências...`);
         
         db.serialize(() => {
-            // Iniciar transação (e adiar checagens de FK até o commit)
-            db.run('PRAGMA defer_foreign_keys = ON');
+            // Desativar FKs para garantir que nada interrompa a limpeza (re-ativamos ao final)
+            db.run('PRAGMA foreign_keys = OFF');
             db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
                 if (err) {
                     console.error(`❌ Erro ao iniciar transação: ${err.message}`);
+                    // reativar FK
+                    db.run('PRAGMA foreign_keys = ON');
                     return reject(err);
                 }
                 
@@ -578,12 +580,13 @@ function deleteTask(taskId) {
                     if (errFiles) {
                         console.error(`❌ [STEP files-select] ${errFiles.message}`);
                         db.run('ROLLBACK');
+                        db.run('PRAGMA foreign_keys = ON');
                         return reject(new Error(`[files-select] ${errFiles.message}`));
                     }
                     
                     console.log(`📁 Encontrados ${files.length} arquivos para deletar`);
                     
-                    // Deletar arquivos físicos
+                    // Deletar arquivos físicos (best-effort)
                     files.forEach(file => {
                         try {
                             if (fs.existsSync(file.file_path)) {
@@ -592,20 +595,20 @@ function deleteTask(taskId) {
                             }
                         } catch (fsErr) {
                             console.warn(`⚠️ Erro ao deletar arquivo físico ${file.original_name}: ${fsErr.message}`);
-                            // Não interrompe a operação por erro de arquivo físico
                         }
                     });
 
-                    // 2. Deletar logs de atividade da tarefa (referenciam tarefas)
+                    // 2. Deletar logs de atividade da tarefa
                     db.run('DELETE FROM atividade_logs WHERE task_id = ?', [taskId], function(errAlog) {
                         if (errAlog) {
                             console.error(`❌ [STEP atividade_logs-delete] ${errAlog.message}`);
                             db.run('ROLLBACK');
+                            db.run('PRAGMA foreign_keys = ON');
                             return reject(new Error(`[atividade_logs-delete] ${errAlog.message}`));
                         }
                         console.log(`🗑️ ${this.changes} atividade_logs deletados`);
 
-                        // 3. Deletar logs de arquivos relacionados à tarefa (referenciam arquivos)
+                        // 3. Deletar logs de arquivos relacionados à tarefa
                         db.run(`
                             DELETE FROM arquivo_logs 
                             WHERE arquivo_id IN (
@@ -615,29 +618,34 @@ function deleteTask(taskId) {
                             if (errFlog) {
                                 console.error(`❌ [STEP arquivo_logs-delete] ${errFlog.message}`);
                                 db.run('ROLLBACK');
+                                db.run('PRAGMA foreign_keys = ON');
                                 return reject(new Error(`[arquivo_logs-delete] ${errFlog.message}`));
                             }
                             console.log(`🗑️ ${this.changes} arquivo_logs deletados`);
 
-                            // 4. Deletar arquivos da tarefa (filhos diretos)
+                            // 4. Deletar arquivos da tarefa
                             db.run('DELETE FROM arquivos WHERE task_id = ?', [taskId], function(errFilesDel) {
                                 if (errFilesDel) {
                                     console.error(`❌ [STEP arquivos-delete] ${errFilesDel.message}`);
                                     db.run('ROLLBACK');
+                                    db.run('PRAGMA foreign_keys = ON');
                                     return reject(new Error(`[arquivos-delete] ${errFilesDel.message}`));
                                 }
                                 console.log(`🗑️ ${this.changes} arquivos deletados do banco`);
 
-                                // 5. Finalmente, deletar a tarefa (pai)
+                                // 5. Deletar a tarefa
                                 db.run('DELETE FROM tarefas WHERE id = ?', [taskId], function(errTaskDel) {
                                     if (errTaskDel) {
                                         console.error(`❌ [STEP tarefas-delete] ${errTaskDel.message}`);
                                         db.run('ROLLBACK');
+                                        db.run('PRAGMA foreign_keys = ON');
                                         return reject(new Error(`[tarefas-delete] ${errTaskDel.message}`));
                                     }
 
                                     // Confirmar transação
                                     db.run('COMMIT', (errCommit) => {
+                                        // reativar FK sempre
+                                        db.run('PRAGMA foreign_keys = ON');
                                         if (errCommit) {
                                             console.error(`❌ [STEP commit] ${errCommit.message}`);
                                             return reject(new Error(`[commit] ${errCommit.message}`));

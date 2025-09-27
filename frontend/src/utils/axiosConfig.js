@@ -19,7 +19,9 @@ const axiosInstance = axios.create({
 axiosInstance.interceptors.request.use((config) => {
   const token = localStorage.getItem('authToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
-  console.log('[axios] baseURL:', axiosInstance.defaults.baseURL, '→', (config.method || 'GET').toUpperCase(), config.url);
+  if (import.meta?.env?.DEV || import.meta?.env?.VITE_LOG_LEVEL === 'debug') {
+    console.log('[axios] baseURL:', axiosInstance.defaults.baseURL, '→', (config.method || 'GET').toUpperCase(), config.url);
+  }
   return config;
 });
 
@@ -44,5 +46,7 @@ export default axiosInstance;
 
 export const setApiBase = (url) => {
   axiosInstance.defaults.baseURL = `${url}`.replace(/\/+$/, '');
-  console.info('[axios] baseURL alterada para', axiosInstance.defaults.baseURL);
+  if (import.meta?.env?.DEV || import.meta?.env?.VITE_LOG_LEVEL === 'debug') {
+    console.info('[axios] baseURL alterada para', axiosInstance.defaults.baseURL);
+  }
 };
