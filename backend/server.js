@@ -291,6 +291,164 @@ app.put("/api/usuarios/:id", authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint de admin para listar todos os usuários com detalhes completos
+app.get("/api/admin/usuarios", authenticateToken, async (req, res) => {
+  try {
+    // Verificar se é admin
+    const user = await getUserByUid(req.user.uid);
+    if (!user || user.cargo !== 'admin') {
+      return res.status(403).json({ error: "Apenas administradores podem acessar esta rota" });
+    }
+    
+    const users = await getAllUsers();
+    
+    const usuarios = users.map(user => ({
+      uid: user.uid,
+      nomeCompleto: user.nome_completo,
+      email: user.email,
+      cargo: user.cargo || "usuario",
+      createdAt: user.created_at,
+      updatedAt: user.updated_at
+    }));
+    
+    res.status(200).json(usuarios);
+  } catch (error) {
+    console.error("Erro ao buscar usuários:", error.message);
+    res.status(500).json({ error: "Erro ao buscar usuários: " + error.message });
+  }
+});
+
+// Endpoint de admin para atualizar senha de usuário
+app.put("/api/admin/usuarios/:id/senha", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body;
+    
+    // Verificar se é admin
+    const user = await getUserByUid(req.user.uid);
+    if (!user || user.cargo !== 'admin') {
+      return res.status(403).json({ error: "Apenas administradores podem alterar senhas" });
+    }
+    
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).json({ error: "A nova senha deve ter pelo menos 6 caracteres" });
+    }
+    
+    // Buscar usuário que será editado
+    const targetUser = await getUserByUid(id);
+    if (!targetUser) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    
+    // Atualizar senha
+    const updatedData = {
+      uid: targetUser.uid,
+      nomeCompleto: targetUser.nome_completo,
+      email: targetUser.email,
+      password: newPassword,
+      cargo: targetUser.cargo
+    };
+    
+    await upsertUser(updatedData);
+    
+    res.status(200).json({ message: "Senha atualizada com sucesso" });
+  } catch (error) {
+    console.error("Erro ao atualizar senha:", error.message);
+    res.status(500).json({ error: "Erro ao atualizar senha: " + error.message });
+  }
+});
+
+// Endpoint de admin para atualizar cargo de usuário
+app.put("/api/admin/usuarios/:id/cargo", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { cargo } = req.body;
+    
+    // Verificar se é admin
+    const user = await getUserByUid(req.user.uid);
+    if (!user || user.cargo !== 'admin') {
+      return res.status(403).json({ error: "Apenas administradores podem alterar cargos" });
+    }
+    
+    if (!cargo || !['admin', 'usuario'].includes(cargo)) {
+      return res.status(400).json({ error: "Cargo deve ser 'admin' ou 'usuario'" });
+    }
+    
+    // Não permitir que admin remova seu próprio cargo de admin
+    if (id === req.user.uid && cargo !== 'admin') {
+      return res.status(400).json({ error: "Você não pode remover seu próprio cargo de administrador" });
+    }
+    
+    // Buscar usuário que será editado
+    const targetUser = await getUserByUid(id);
+    if (!targetUser) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    
+    // Atualizar cargo
+    const updatedData = {
+      uid: targetUser.uid,
+      nomeCompleto: targetUser.nome_completo,
+      email: targetUser.email,
+      password: targetUser.password,
+      cargo: cargo
+    };
+    
+    await upsertUser(updatedData);
+    
+    res.status(200).json({ message: "Cargo atualizado com sucesso" });
+  } catch (error) {
+    console.error("Erro ao atualizar cargo:", error.message);
+    res.status(500).json({ error: "Erro ao atualizar cargo: " + error.message });
+  }
+});
+
+// Endpoint de admin para atualizar email de usuário
+app.put("/api/admin/usuarios/:id/email", authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { email } = req.body;
+    
+    // Verificar se é admin
+    const user = await getUserByUid(req.user.uid);
+    if (!user || user.cargo !== 'admin') {
+      return res.status(403).json({ error: "Apenas administradores podem alterar emails" });
+    }
+    
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: "Email inválido" });
+    }
+    
+    // Verificar se email já existe
+    const existingUser = await getUserByEmail(email);
+    if (existingUser && existingUser.uid !== id) {
+      return res.status(400).json({ error: "Email já está em uso por outro usuário" });
+    }
+    
+    // Buscar usuário que será editado
+    const targetUser = await getUserByUid(id);
+    if (!targetUser) {
+      return res.status(404).json({ error: "Usuário não encontrado" });
+    }
+    
+    // Atualizar email
+    const updatedData = {
+      uid: targetUser.uid,
+      nomeCompleto: targetUser.nome_completo,
+      email: email,
+      password: targetUser.password,
+      cargo: targetUser.cargo
+    };
+    
+    await upsertUser(updatedData);
+    
+    res.status(200).json({ message: "Email atualizado com sucesso" });
+  } catch (error) {
+    console.error("Erro ao atualizar email:", error.message);
+    res.status(500).json({ error: "Erro ao atualizar email: " + error.message });
+  }
+});
+
 // Endpoint para remover usuário
 app.delete("/api/usuarios/:id", authenticateToken, async (req, res) => {
   try {
