@@ -933,38 +933,26 @@ app.put("/api/tarefas/:id", authenticateToken, async (req, res) => {
 app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    console.log(`[DELETE TASK] Iniciando exclusão da tarefa: ${id}`);
-    console.log(`[DELETE TASK] Usuário autenticado: ${req.user.email} (UID: ${req.user.uid})`);
     
     // Verificar se é admin
     const user = await getUserByUid(req.user.uid);
-    console.log(`[DELETE TASK] Dados do usuário: ${user ? JSON.stringify({email: user.email, cargo: user.cargo}) : 'Não encontrado'}`);
-    
     if (!user || user.cargo !== 'admin') {
-      console.log(`[DELETE TASK] Acesso negado - usuário não é admin`);
       return res.status(403).json({ error: "Apenas administradores podem excluir tarefas" });
     }
     
     // Buscar a tarefa para log
     const task = await getTaskById(id);
-    console.log(`[DELETE TASK] Tarefa encontrada: ${task ? task.titulo : 'Não encontrada'}`);
-    
     if (!task) {
-      console.log(`[DELETE TASK] Tarefa ${id} não encontrada no banco`);
       return res.status(404).json({ error: "Tarefa não encontrada" });
     }
     
     // Verificar dependências da tarefa
-    console.log(`[DELETE TASK] Verificando dependências da tarefa ${id}`);
     const dependencies = await checkTaskDependencies(id);
-    console.log(`[DELETE TASK] Dependências encontradas:`, dependencies);
     
-    console.log(`[DELETE TASK] Executando exclusão da tarefa ${id} com suas dependências`);
+    // Executar exclusão
     const deleteResult = await deleteTask(id);
-    console.log(`[DELETE TASK] Resultado da exclusão:`, deleteResult);
     
     // Log da atividade
-    console.log(`[DELETE TASK] Registrando log de atividade`);
     await insertActivityLog({
       userId: req.user.uid,
       userEmail: req.user.email,
@@ -973,7 +961,6 @@ app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
       taskTitle: task.titulo
     });
     
-    console.log(`[DELETE TASK] Tarefa ${id} deletada com sucesso`);
     res.status(200).json({ 
       message: "Tarefa e todas suas dependências deletadas com sucesso",
       deletedTaskId: id,
@@ -986,11 +973,9 @@ app.delete("/api/tarefas/:id", authenticateToken, async (req, res) => {
       deletedFiles: deleteResult.deletedFiles || 0
     });
   } catch (error) {
-    console.error(`[DELETE TASK] Erro ao deletar tarefa ${req.params.id}:`, error);
-    console.error(`[DELETE TASK] Stack trace:`, error.stack);
+    console.error(`[DELETE TASK] Erro ao deletar tarefa ${req.params.id}:`, error.message);
     res.status(500).json({ 
-      error: "Erro ao deletar tarefa: " + error.message,
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      error: "Erro ao deletar tarefa: " + error.message
     });
   }
 });
@@ -1244,7 +1229,6 @@ app.get('/api/files/task/:taskId', authenticateToken, async (req, res) => {
 app.delete('/api/files/:fileId', authenticateToken, async (req, res) => {
   try {
     const { fileId } = req.params;
-    console.log('[DELETE FILE] Deletando arquivo:', fileId);
     
     const fileRecord = await getFileById(fileId);
     if (!fileRecord) {
@@ -1275,16 +1259,14 @@ app.delete('/api/files/:fileId', authenticateToken, async (req, res) => {
     // Remover arquivo físico
     if (fs.existsSync(fileRecord.file_path)) {
       fs.unlinkSync(fileRecord.file_path);
-      console.log('[DELETE FILE] Arquivo físico removido:', fileRecord.file_path);
     }
     
     // Remover do banco (registro do arquivo)
     await deleteFile(fileId);
     
-    console.log('[DELETE FILE] Arquivo deletado com sucesso');
     res.status(200).json({ message: 'Arquivo deletado com sucesso' });
   } catch (error) {
-    console.error('[DELETE FILE] Erro ao deletar arquivo:', error);
+    console.error('[DELETE FILE] Erro ao deletar arquivo:', error.message);
     res.status(500).json({ error: 'Erro interno do servidor' });
   }
 });
@@ -1621,6 +1603,137 @@ app.post('/api/agenda-tributaria/criar-mes-api', authenticateToken, async (req, 
   } catch (error) {
     console.error('[AGENDA-AUTOMATIZADA] Erro ao criar tarefas do mês com API:', error.message);
     res.status(500).json({ error: 'Erro ao criar tarefas do mês com API: ' + error.message });
+  }
+});
+
+// Endpoint para buscar obrigações estaduais
+app.get('/api/agenda-tributaria/obrigacoes-estaduais', authenticateToken, async (req, res) => {
+  try {
+    // Verificar se é admin
+    const user = await getUserByUid(req.user.uid);
+    if (!user || user.cargo !== 'admin') {
+      return res.status(403).json({ error: "Apenas administradores podem acessar as obrigações estaduais" });
+    }
+    
+    // Obrigações estaduais comuns (ICMS, etc.)
+    // Estas são obrigações genéricas que variam por estado
+    const obrigacoesEstaduais = [
+      {
+        mes: 1,
+        mesNome: 'janeiro',
+        totalObrigacoes: 3,
+        obrigacoes: [
+          {
+            titulo: 'ICMS - Imposto sobre Circulação de Mercadorias e Serviços',
+            vencimento: 20,
+            observacoes: 'Varia por estado. Recolhimento do ICMS do mês anterior (Dezembro/2024).',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'GIA - Guia de Informação e Apuração do ICMS',
+            vencimento: 25,
+            observacoes: 'Varia por estado. Declaração mensal do ICMS.',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'DIFAL - Diferencial de Alíquota',
+            vencimento: 20,
+            observacoes: 'Varia por estado. Diferencial de alíquota do ICMS.',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          }
+        ]
+      },
+      {
+        mes: 2,
+        mesNome: 'fevereiro',
+        totalObrigacoes: 3,
+        obrigacoes: [
+          {
+            titulo: 'ICMS - Imposto sobre Circulação de Mercadorias e Serviços',
+            vencimento: 20,
+            observacoes: 'Varia por estado. Recolhimento do ICMS do mês anterior (Janeiro/2025).',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'GIA - Guia de Informação e Apuração do ICMS',
+            vencimento: 25,
+            observacoes: 'Varia por estado. Declaração mensal do ICMS.',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'DIFAL - Diferencial de Alíquota',
+            vencimento: 20,
+            observacoes: 'Varia por estado. Diferencial de alíquota do ICMS.',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          }
+        ]
+      }
+    ];
+    
+    // Adicionar os mesmos padrões para os outros meses
+    for (let mes = 3; mes <= 12; mes++) {
+      const mesNome = new Date(0, mes - 1).toLocaleString('pt-BR', { month: 'long' });
+      const mesAnterior = mes === 1 ? 12 : mes - 1;
+      const mesAnteriorNome = new Date(0, mesAnterior - 1).toLocaleString('pt-BR', { month: 'long' });
+      
+      obrigacoesEstaduais.push({
+        mes,
+        mesNome,
+        totalObrigacoes: 3,
+        obrigacoes: [
+          {
+            titulo: 'ICMS - Imposto sobre Circulação de Mercadorias e Serviços',
+            vencimento: 20,
+            observacoes: `Varia por estado. Recolhimento do ICMS do mês anterior (${mesAnteriorNome}/2025).`,
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'GIA - Guia de Informação e Apuração do ICMS',
+            vencimento: 25,
+            observacoes: 'Varia por estado. Declaração mensal do ICMS.',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'DIFAL - Diferencial de Alíquota',
+            vencimento: 20,
+            observacoes: 'Varia por estado. Diferencial de alíquota do ICMS.',
+            categoria: 'ICMS',
+            empresaTipo: ['Todas'],
+            fonte: 'Calendário Estadual'
+          }
+        ]
+      });
+    }
+    
+    const totalObrigacoes = obrigacoesEstaduais.reduce((total, mes) => total + mes.totalObrigacoes, 0);
+    
+    res.status(200).json({
+      totalMeses: obrigacoesEstaduais.length,
+      totalObrigacoes,
+      dataUltimaAtualizacao: new Date().toISOString(),
+      obrigacoesPorMes: obrigacoesEstaduais,
+      fonte: 'Calendário Estadual - Obrigações genéricas (varia por estado)'
+    });
+    
+  } catch (error) {
+    console.error('[AGENDA-ESTADUAL] Erro ao listar obrigações estaduais:', error.message);
+    res.status(500).json({ error: 'Erro ao listar obrigações estaduais: ' + error.message });
   }
 });
 

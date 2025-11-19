@@ -70,6 +70,7 @@ const Calendario = () => {
   const [obrigacoesCompletas, setObrigacoesCompletas] = useState([]);
   const [loadingObrigacoesAtualizadas, setLoadingObrigacoesAtualizadas] = useState(false);
   const [criacoesAutomatizadas, setCriacoesAutomatizadas] = useState({});
+  const [tipoCalendario, setTipoCalendario] = useState('federal'); // 'federal' ou 'estadual'
 
   const [newTask, setNewTask] = useState({
     titulo: "",
@@ -525,58 +526,34 @@ const Calendario = () => {
   };
 
   const handleDeleteTask = async (id) => {
-    console.log('[DELETE] Iniciando exclusão da tarefa:', id);
-    console.log('[DELETE] isAdmin:', isAdmin);
-    console.log('[DELETE] User:', user);
-    
     // Verificar se o usuário é admin para poder excluir tarefas
     if (!isAdmin) {
-      console.log('[DELETE] Acesso negado - usuário não é admin');
       alert("Apenas administradores podem excluir tarefas.");
       return;
     }
     
     const task = tasks.find((t) => t.id === id);
-    console.log('[DELETE] Tarefa encontrada:', task?.titulo || 'Não encontrada');
     
     if (window.confirm(`Tem certeza de que deseja excluir a tarefa "${task?.titulo || 'Tarefa'}"?`)) {
       try {
-        console.log('[DELETE] Chamando taskService.delete...');
-        const response = await taskService.delete(id);
-        console.log('[DELETE] Resposta do servidor:', response);
+        await taskService.delete(id);
         
-        console.log('[DELETE] Registrando log de atividade...');
-        await logActivity("delete_task", id, task?.titulo || "Tarefa");
-        
-        console.log('[DELETE] Atualizando lista de tarefas localmente...');
-        setTasks((prev) => {
-          const newTasks = prev.filter((t) => t.id !== id);
-          console.log(`[DELETE] Tarefas antes: ${prev.length}, depois: ${newTasks.length}`);
-          return newTasks;
-        });
+        // Atualizar lista de tarefas localmente
+        setTasks((prev) => prev.filter((t) => t.id !== id));
         
         // Fechar modal se a tarefa excluída estava sendo visualizada
         if (selectedTask?.id === id) {
-          console.log('[DELETE] Fechando modal da tarefa excluída');
           setShowTaskDetails(false);
           setSelectedTask(null);
         }
         
-        console.log('[DELETE] Tarefa excluída com sucesso!');
-        
         // Recarregar a lista de tarefas do servidor para garantir sincronização
         setTimeout(() => {
-          console.log('[DELETE] Recarregando lista de tarefas do servidor...');
           fetchTasks();
-        }, 1000);
+        }, 500);
         
       } catch (error) {
-        console.error('[DELETE] Erro detalhado ao excluir tarefa:', error);
-        console.error('[DELETE] Error response:', error.response?.data);
-        console.error('[DELETE] Error status:', error.response?.status);
-        console.error('[DELETE] Error headers:', error.response?.headers);
-        
-        let errorMessage = "Erro ao excluir tarefa.";
+        let errorMessage = "Erro ao excluir tarefa. Tente novamente.";
         
         if (error.response?.status === 401) {
           errorMessage = "Erro de autenticação. Faça login novamente.";
@@ -586,11 +563,10 @@ const Calendario = () => {
           errorMessage = "Tarefa não encontrada. Pode já ter sido excluída.";
         } else if (error.response?.data?.error) {
           errorMessage = error.response.data.error;
-        } else if (error.message) {
-          errorMessage = error.message;
         }
         
-        alert(`${errorMessage} Detalhes do erro foram registrados no console.`);
+        console.error('[DELETE] Erro ao excluir tarefa:', error);
+        alert(errorMessage);
       }
     }
   };
@@ -1644,30 +1620,31 @@ const Calendario = () => {
       setLoadingObrigacoesAtualizadas(true);
       setAgendaError(null);
       
-      console.log('[FRONTEND] Iniciando busca de obrigações atualizadas...');
-      
-      // Primeiro, tenta buscar as obrigações completas via API
-      const responseCompletas = await agendaTributariaService.getObrigacoesCompletas();
-      console.log('[FRONTEND] Resposta das obrigações completas:', responseCompletas);
-      
-      if (responseCompletas && responseCompletas.obrigacoesPorMes && responseCompletas.obrigacoesPorMes.length > 0) {
-        setObrigacoesCompletas(responseCompletas.obrigacoesPorMes);
-        setSistemaAtualizado(true);
-        console.log('[FRONTEND] ✅ Obrigações completas carregadas com sucesso!');
-        console.log('[FRONTEND] Total de meses:', responseCompletas.obrigacoesPorMes.length);
-        console.log('[FRONTEND] Total de obrigações:', responseCompletas.totalObrigacoes);
-      } else {
-        // Se não conseguir as obrigações completas, tenta buscar atualizações
-        console.log('[FRONTEND] Tentando buscar atualizações...');
-        const responseAtualizacoes = await agendaTributariaService.buscarAtualizacoes();
-        console.log('[FRONTEND] Resposta das atualizações:', responseAtualizacoes);
-        
-        if (responseAtualizacoes && responseAtualizacoes.obrigacoesPorMes) {
-          setObrigacoesCompletas(responseAtualizacoes.obrigacoesPorMes);
+      if (tipoCalendario === 'estadual') {
+        // Buscar calendário estadual
+        const response = await axiosInstance.get('/api/agenda-tributaria/obrigacoes-estaduais');
+        if (response.data && response.data.obrigacoesPorMes && response.data.obrigacoesPorMes.length > 0) {
+          setObrigacoesCompletas(response.data.obrigacoesPorMes);
           setSistemaAtualizado(true);
-          console.log('[FRONTEND] ✅ Atualizações carregadas com sucesso!');
         } else {
-          throw new Error('Não foi possível carregar dados atualizados');
+          throw new Error('Não foi possível carregar calendário estadual');
+        }
+      } else {
+        // Buscar calendário federal
+        const responseCompletas = await agendaTributariaService.getObrigacoesCompletas();
+        
+        if (responseCompletas && responseCompletas.obrigacoesPorMes && responseCompletas.obrigacoesPorMes.length > 0) {
+          setObrigacoesCompletas(responseCompletas.obrigacoesPorMes);
+          setSistemaAtualizado(true);
+        } else {
+          const responseAtualizacoes = await agendaTributariaService.buscarAtualizacoes();
+          
+          if (responseAtualizacoes && responseAtualizacoes.obrigacoesPorMes) {
+            setObrigacoesCompletas(responseAtualizacoes.obrigacoesPorMes);
+            setSistemaAtualizado(true);
+          } else {
+            throw new Error('Não foi possível carregar dados atualizados');
+          }
         }
       }
     } catch (error) {
@@ -1910,7 +1887,26 @@ const Calendario = () => {
               Configurações
             </h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Calendário</label>
+                <select
+                  value={tipoCalendario}
+                  onChange={(e) => {
+                    setTipoCalendario(e.target.value);
+                    setSistemaAtualizado(false);
+                    setObrigacoesCompletas([]);
+                  }}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="federal">Federal (RFB)</option>
+                  <option value="estadual">Estadual</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  {tipoCalendario === 'federal' ? 'Obrigações da Receita Federal' : 'Obrigações estaduais (ICMS, etc.)'}
+                </p>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Ano</label>
                 <select
@@ -2432,15 +2428,22 @@ const Calendario = () => {
         )}
 
         {showTaskDetails && selectedTask && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-sm max-h-sm overflow-y-auto mx-4">
-              <div className="flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
-                <div className="flex items-center gap-3">
-                  <div className={`p-1.5 rounded-full ${statusColors[selectedTask.status]}`}>
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                handleCloseModal("details");
+              }
+            }}
+          >
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto mx-4 relative">
+              <div className="sticky top-0 bg-white z-10 flex items-center justify-between p-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className={`p-1.5 rounded-full flex-shrink-0 ${statusColors[selectedTask.status]}`}>
                     {statusIcons[selectedTask.status]}
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-800">{selectedTask.titulo}</h3>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-lg font-semibold text-gray-800 truncate">{selectedTask.titulo}</h3>
                     <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${statusColors[selectedTask.status]} mt-1`}>
                       {statusLabels[selectedTask.status]}
                     </span>
@@ -2448,8 +2451,9 @@ const Calendario = () => {
                 </div>
                 <button 
                   onClick={() => handleCloseModal("details")} 
-                  className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                  className="text-gray-400 hover:text-gray-600 p-1.5 hover:bg-gray-100 rounded-full transition-colors flex-shrink-0 ml-2"
                   title="Fechar detalhes"
+                  aria-label="Fechar detalhes"
                 >
                   <X className="w-5 h-5" />
                 </button>
