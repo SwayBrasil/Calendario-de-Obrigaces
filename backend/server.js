@@ -1777,105 +1777,64 @@ app.get('/api/agenda-tributaria/obrigacoes-estaduais', authenticateToken, async 
       return res.status(403).json({ error: "Apenas administradores podem acessar as obrigações estaduais" });
     }
     
-    // Obrigações estaduais comuns (ICMS, etc.)
-    // Estas são obrigações genéricas que variam por estado
-    const obrigacoesEstaduais = [
-      {
-        mes: 1,
-        mesNome: 'janeiro',
-        totalObrigacoes: 3,
-        obrigacoes: [
-          {
-            titulo: 'ICMS - Imposto sobre Circulação de Mercadorias e Serviços',
-            vencimento: 20,
-            observacoes: 'Varia por estado. Recolhimento do ICMS do mês anterior (Dezembro/2024).',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          },
-          {
-            titulo: 'GIA - Guia de Informação e Apuração do ICMS',
-            vencimento: 25,
-            observacoes: 'Varia por estado. Declaração mensal do ICMS.',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          },
-          {
-            titulo: 'DIFAL - Diferencial de Alíquota',
-            vencimento: 20,
-            observacoes: 'Varia por estado. Diferencial de alíquota do ICMS.',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          }
-        ]
-      },
-      {
-        mes: 2,
-        mesNome: 'fevereiro',
-        totalObrigacoes: 3,
-        obrigacoes: [
-          {
-            titulo: 'ICMS - Imposto sobre Circulação de Mercadorias e Serviços',
-            vencimento: 20,
-            observacoes: 'Varia por estado. Recolhimento do ICMS do mês anterior (Janeiro/2025).',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          },
-          {
-            titulo: 'GIA - Guia de Informação e Apuração do ICMS',
-            vencimento: 25,
-            observacoes: 'Varia por estado. Declaração mensal do ICMS.',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          },
-          {
-            titulo: 'DIFAL - Diferencial de Alíquota',
-            vencimento: 20,
-            observacoes: 'Varia por estado. Diferencial de alíquota do ICMS.',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          }
-        ]
-      }
+    // Obrigações estaduais específicas conforme solicitado
+    // ICMS Comércio Varejista, Indústria, Transporte (dia 08)
+    // ICMS ST (dia 09)
+    // DAPI
+    const obrigacoesEstaduais = [];
+    const meses = [
+      'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+      'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
     ];
     
-    // Adicionar os mesmos padrões para os outros meses
-    for (let mes = 3; mes <= 12; mes++) {
-      const mesNome = new Date(0, mes - 1).toLocaleString('pt-BR', { month: 'long' });
+    for (let mes = 1; mes <= 12; mes++) {
+      const mesNome = meses[mes - 1];
       const mesAnterior = mes === 1 ? 12 : mes - 1;
-      const mesAnteriorNome = new Date(0, mesAnterior - 1).toLocaleString('pt-BR', { month: 'long' });
+      const mesAnteriorNome = meses[mesAnterior - 1];
+      const anoAtual = new Date().getFullYear();
       
       obrigacoesEstaduais.push({
         mes,
         mesNome,
-        totalObrigacoes: 3,
+        totalObrigacoes: 5,
         obrigacoes: [
           {
-            titulo: 'ICMS - Imposto sobre Circulação de Mercadorias e Serviços',
-            vencimento: 20,
-            observacoes: `Varia por estado. Recolhimento do ICMS do mês anterior (${mesAnteriorNome}/2025).`,
+            titulo: 'ICMS - Comércio Varejista',
+            vencimento: 8,
+            observacoes: `Recolhimento do ICMS do mês anterior (${mesAnteriorNome}/${anoAtual}). Aplicável para empresas do comércio varejista.`,
             categoria: 'ICMS',
+            empresaTipo: ['Comércio Varejista'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'ICMS - Indústria',
+            vencimento: 8,
+            observacoes: `Recolhimento do ICMS do mês anterior (${mesAnteriorNome}/${anoAtual}). Aplicável para empresas industriais.`,
+            categoria: 'ICMS',
+            empresaTipo: ['Indústria'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'ICMS - Transporte',
+            vencimento: 8,
+            observacoes: `Recolhimento do ICMS do mês anterior (${mesAnteriorNome}/${anoAtual}). Aplicável para empresas de transporte.`,
+            categoria: 'ICMS',
+            empresaTipo: ['Transporte'],
+            fonte: 'Calendário Estadual'
+          },
+          {
+            titulo: 'ICMS ST - Substituição Tributária',
+            vencimento: 9,
+            observacoes: `Recolhimento do ICMS ST do mês anterior (${mesAnteriorNome}/${anoAtual}). Substituição Tributária.`,
+            categoria: 'ICMS ST',
             empresaTipo: ['Todas'],
             fonte: 'Calendário Estadual'
           },
           {
-            titulo: 'GIA - Guia de Informação e Apuração do ICMS',
-            vencimento: 25,
-            observacoes: 'Varia por estado. Declaração mensal do ICMS.',
-            categoria: 'ICMS',
-            empresaTipo: ['Todas'],
-            fonte: 'Calendário Estadual'
-          },
-          {
-            titulo: 'DIFAL - Diferencial de Alíquota',
+            titulo: 'DAPI - Declaração de Apuração de Impostos',
             vencimento: 20,
-            observacoes: 'Varia por estado. Diferencial de alíquota do ICMS.',
-            categoria: 'ICMS',
+            observacoes: `Declaração de apuração de impostos do mês anterior (${mesAnteriorNome}/${anoAtual}). Varia por estado.`,
+            categoria: 'DAPI',
             empresaTipo: ['Todas'],
             fonte: 'Calendário Estadual'
           }

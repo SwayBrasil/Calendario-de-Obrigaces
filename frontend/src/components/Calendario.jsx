@@ -2716,13 +2716,87 @@ const Calendario = () => {
                               </div>
                               <div className="flex items-center gap-1">
                                 <button
-                                  onClick={() => {
-                                    const link = document.createElement('a');
-                                    link.href = fileUrl;
-                                    link.download = fileName;
-                                    document.body.appendChild(link);
-                                    link.click();
-                                    document.body.removeChild(link);
+                                  onClick={async () => {
+                                    try {
+                                      // Construir URL completa usando axiosInstance baseURL
+                                      const fullUrl = fileUrl.startsWith('http') 
+                                        ? fileUrl 
+                                        : `${axiosInstance.defaults.baseURL}${fileUrl}`;
+                                      
+                                      // Para visualizar, fazer requisição autenticada
+                                      const token = localStorage.getItem('authToken');
+                                      const response = await fetch(fullUrl, {
+                                        headers: {
+                                          'Authorization': `Bearer ${token}`
+                                        }
+                                      });
+                                      
+                                      if (response.ok) {
+                                        const blob = await response.blob();
+                                        const url = window.URL.createObjectURL(blob);
+                                        
+                                        // Para PDFs e imagens, abrir em nova aba
+                                        if (fileType === 'application/pdf' || fileType?.startsWith('image/')) {
+                                          window.open(url, '_blank');
+                                        } else {
+                                          // Para outros tipos, tentar abrir ou fazer download
+                                          const link = document.createElement('a');
+                                          link.href = url;
+                                          link.target = '_blank';
+                                          document.body.appendChild(link);
+                                          link.click();
+                                          document.body.removeChild(link);
+                                        }
+                                        
+                                        // Limpar URL após um tempo
+                                        setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                                      } else {
+                                        alert('Erro ao visualizar arquivo. Tente fazer o download.');
+                                      }
+                                    } catch (error) {
+                                      console.error('Erro ao visualizar arquivo:', error);
+                                      alert('Erro ao visualizar arquivo. Tente fazer o download.');
+                                    }
+                                  }}
+                                  className="p-1.5 text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded-full transition-colors"
+                                  title="Visualizar arquivo"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      // Construir URL completa usando axiosInstance baseURL
+                                      const fullUrl = fileUrl.startsWith('http') 
+                                        ? fileUrl 
+                                        : `${axiosInstance.defaults.baseURL}${fileUrl}`;
+                                      
+                                      // Fazer download via API autenticada
+                                      const token = localStorage.getItem('authToken');
+                                      const response = await fetch(fullUrl, {
+                                        headers: {
+                                          'Authorization': `Bearer ${token}`
+                                        }
+                                      });
+                                      
+                                      if (response.ok) {
+                                        const blob = await response.blob();
+                                        const url = window.URL.createObjectURL(blob);
+                                        const link = document.createElement('a');
+                                        link.href = url;
+                                        link.download = fileName;
+                                        document.body.appendChild(link);
+                                        link.click();
+                                        document.body.removeChild(link);
+                                        // Limpar URL após download
+                                        setTimeout(() => window.URL.revokeObjectURL(url), 100);
+                                      } else {
+                                        alert('Erro ao baixar arquivo. Verifique sua conexão.');
+                                      }
+                                    } catch (error) {
+                                      console.error('Erro ao baixar arquivo:', error);
+                                      alert('Erro ao baixar arquivo. Verifique sua conexão.');
+                                    }
                                   }}
                                   className="p-1.5 text-green-600 hover:text-green-800 hover:bg-green-100 rounded-full transition-colors"
                                   title="Baixar arquivo"
