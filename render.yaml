@@ -69,3 +69,5 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://calendario-backend.onrender.com
+      - key: FRONTEND_URL
+        value: https://calendario-de-obrigacoes.onrender.com

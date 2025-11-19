@@ -12,30 +12,34 @@ const PORT = process.env.PORT || 3001;
 const frontendUrl = (process.env.FRONTEND_URL || "https://calendario-de-obrigacoes.onrender.com").replace(/\/+$/, '');
 const allowedOrigins = [
   frontendUrl,
+  "https://calendario-de-obrigacoes.onrender.com",
   "http://localhost:5173",
 ];
 
-
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  console.log(`[CORS] Request from origin: ${origin}`);
-  console.log(`[CORS] Method: ${req.method}`);
-  console.log(`[CORS] Path: ${req.path}`);
   
+  // Permitir origem se estiver na lista ou se for uma requisição sem origem (ex: Postman)
   if (!origin || allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin || "*");
+    res.header("Access-Control-Allow-Origin", origin || allowedOrigins[0]);
+  } else {
+    // Log para debug mas ainda permite (em produção, pode querer bloquear)
+    console.warn(`[CORS] Origin não permitida: ${origin}`);
+    res.header("Access-Control-Allow-Origin", allowedOrigins[0]);
   }
+  
   res.header("Vary", "Origin");
   res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.header("Access-Control-Allow-Credentials", "true");
   res.header("Access-Control-Max-Age", "3600"); // Cache preflight por 1 hora
-  // Se for usar cookies/sessão cross-site, habilite também:
-  // res.header("Access-Control-Allow-Credentials", "true");
 
+  // Responder preflight requests
   if (req.method === "OPTIONS") {
-    console.log('[CORS] Preflight request handled');
-    return res.status(200).end(); // responde preflight com status 200
+    console.log('[CORS] Preflight request handled for:', origin);
+    return res.status(200).end();
   }
+  
   next();
 });
 /** <<< CORS >>> **/

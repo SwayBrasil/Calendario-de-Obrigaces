@@ -9,7 +9,8 @@ const isProd = typeof window !== 'undefined' &&
   (window.location.hostname.includes('onrender.com') ||
    window.location.protocol === 'https:');
 
-const baseURL = backendFromEnv || (isProd ? window.location.origin.replace(/\/+$/, '') : 'http://localhost:3001');
+// Em produção, sempre usar a URL do backend configurada, não a origem do frontend
+const baseURL = backendFromEnv || (isProd ? 'https://calendario-backend.onrender.com' : 'http://localhost:3001');
 
 const axiosInstance = axios.create({
   baseURL,
