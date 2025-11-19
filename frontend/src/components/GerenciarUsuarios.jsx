@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import axiosInstance from '../utils/axiosConfig';
+import { userService } from '../services/api';
 import '../styles/GerenciarUsuarios.css';
 
 const GerenciarUsuarios = () => {
@@ -11,6 +12,11 @@ const GerenciarUsuarios = () => {
   const [error, setError] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [editForm, setEditForm] = useState({ nome: '', tipo: 'usuario' });
+  const [changingPassword, setChangingPassword] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const { user, isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -77,6 +83,49 @@ const GerenciarUsuarios = () => {
     }
   };
 
+  const iniciarAlteracaoSenha = (usuario) => {
+    setChangingPassword(usuario.id);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setSuccessMessage('');
+  };
+
+  const cancelarAlteracaoSenha = () => {
+    setChangingPassword(null);
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordError('');
+    setSuccessMessage('');
+  };
+
+  const salvarNovaSenha = async (usuarioId, nomeUsuario) => {
+    setPasswordError('');
+    setSuccessMessage('');
+
+    // Validações
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('As senhas não coincidem');
+      return;
+    }
+
+    try {
+      await userService.alterarSenha(usuarioId, newPassword);
+      setSuccessMessage(`Senha do usuário "${nomeUsuario}" alterada com sucesso!`);
+      cancelarAlteracaoSenha();
+      // Limpar mensagem de sucesso após 3 segundos
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      console.error('Erro ao alterar senha:', err);
+      setPasswordError(err.response?.data?.error || 'Erro ao alterar senha');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -102,6 +151,12 @@ const GerenciarUsuarios = () => {
             {error && (
               <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
                 {error}
+              </div>
+            )}
+
+            {successMessage && (
+              <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">
+                {successMessage}
               </div>
             )}
 
@@ -182,6 +237,48 @@ const GerenciarUsuarios = () => {
                               Cancelar
                             </button>
                           </div>
+                        ) : changingPassword === usuario.id ? (
+                          <div className="space-y-2">
+                            <div className="flex flex-col space-y-2">
+                              <input
+                                type="password"
+                                placeholder="Nova senha (mín. 6 caracteres)"
+                                value={newPassword}
+                                onChange={(e) => {
+                                  setNewPassword(e.target.value);
+                                  setPasswordError('');
+                                }}
+                                className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              <input
+                                type="password"
+                                placeholder="Confirmar senha"
+                                value={confirmPassword}
+                                onChange={(e) => {
+                                  setConfirmPassword(e.target.value);
+                                  setPasswordError('');
+                                }}
+                                className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                              {passwordError && (
+                                <span className="text-xs text-red-600">{passwordError}</span>
+                              )}
+                            </div>
+                            <div className="flex space-x-2">
+                              <button
+                                onClick={() => salvarNovaSenha(usuario.id, usuario.nome)}
+                                className="text-green-600 hover:text-green-900 text-xs"
+                              >
+                                Salvar Senha
+                              </button>
+                              <button
+                                onClick={cancelarAlteracaoSenha}
+                                className="text-gray-600 hover:text-gray-900 text-xs"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
                         ) : (
                           <div className="flex space-x-2">
                             <button
@@ -189,6 +286,13 @@ const GerenciarUsuarios = () => {
                               className="text-blue-600 hover:text-blue-900"
                             >
                               Editar
+                            </button>
+                            <button
+                              onClick={() => iniciarAlteracaoSenha(usuario)}
+                              className="text-purple-600 hover:text-purple-900"
+                              title="Alterar senha do usuário"
+                            >
+                              Alterar Senha
                             </button>
                             {usuario.id !== user?.uid && (
                               <button

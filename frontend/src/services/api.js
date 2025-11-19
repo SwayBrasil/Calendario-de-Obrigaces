@@ -38,6 +38,14 @@ export const userService = {
   updateLastLogin: async (userId) => {
     const response = await axiosInstance.patch(`/api/usuarios/${userId}/last-login`);
     return response.data;
+  },
+
+  // Alterar senha de usuário (admin)
+  alterarSenha: async (userId, newPassword) => {
+    const response = await axiosInstance.put(`/api/admin/usuarios/${userId}/senha`, {
+      newPassword
+    });
+    return response.data;
   }
 };
 
