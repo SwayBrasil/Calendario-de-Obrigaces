@@ -529,14 +529,15 @@ function parseSicoob(texto) {
         if (num >= 1 && num <= 31 && !candidate.includes(',')) continue;
         // Ignora anos
         if (num >= 2020 && num <= 2030) continue;
-        // Ignora números que parecem contas bancárias (5 dígitos sem vírgula)
-        // MAS: só ignora se NÃO houver vírgula (números de conta não têm vírgula)
-        // Se tiver vírgula e 2 decimais, é um valor válido mesmo que a linha contenha "CONTA"
+        
+        // Verifica se é valor monetário válido (com vírgula e 2 decimais)
         // IMPORTANTE: Valores com vírgula e 2 decimais são SEMPRE válidos, mesmo em contexto de "CONTA"
         const hasComma = candidate.includes(',');
         const decimalPlaces = hasComma ? candidate.split(',')[1]?.length || 0 : 0;
         const isMonetaryValue = hasComma && decimalPlaces === 2;
         
+        // Ignora números que parecem contas bancárias (5 dígitos sem vírgula)
+        // MAS: só ignora se NÃO houver vírgula (números de conta não têm vírgula)
         // Se é um valor monetário válido (com vírgula e 2 decimais), NUNCA rejeita
         if (!isMonetaryValue && num >= 10000 && num < 100000 && !hasComma) {
           const linhaUpper = linha.toUpperCase();
@@ -581,9 +582,7 @@ function parseSicoob(texto) {
         
         // Prefere valores com vírgula e 2 casas decimais
         // IMPORTANTE: Valores monetários válidos (com vírgula e 2 decimais) têm prioridade máxima
-        const hasComma = candidate.includes(',');
-        const decimalPlaces = hasComma ? candidate.split(',')[1]?.length || 0 : 0;
-        const isMonetaryValue = hasComma && decimalPlaces === 2;
+        // hasComma e isMonetaryValue já foram declarados acima
         
         // Calcula posição relativa (quanto mais à direita, melhor)
         const positionScore = matchIndex / Math.max(linha.length, 1);
