@@ -467,16 +467,29 @@ function parseSicoob(texto) {
         if (num >= 1 && num <= 31 && !candidate.includes(',')) continue;
         // Ignora anos
         if (num >= 2020 && num <= 2030) continue;
-        // Ignora números que parecem contas bancárias (5 dígitos sem vírgula: 11111, 12345, 33333)
-        // Mas só ignora se estiver no contexto de "CONTA" ou se for número repetido (11111, 33333)
-        const isRepeatedDigits = /^(\d)\1{4,}$/.test(candidate.replace(/\./g, ''));
-        if (num >= 10000 && num < 100000 && !candidate.includes(',') && isRepeatedDigits) {
-          continue;
-        }
-        // Ignora números de 5 dígitos que aparecem após "CONTA" na linha
+        // Ignora números que parecem contas bancárias (5 dígitos sem vírgula)
         if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
-          const beforeValue = linha.substring(0, matchIndex).toUpperCase();
+          const linhaUpper = linha.toUpperCase();
+          const beforeValue = linhaUpper.substring(0, matchIndex);
+          
+          // Ignora se aparecer após palavras relacionadas a conta bancária
           if (beforeValue.includes('CONTA') || beforeValue.includes('AGENCIA') || beforeValue.includes('AGÊNCIA')) {
+            continue;
+          }
+          
+          // Ignora se for número repetido (11111, 33333)
+          const candidateSemPontos = candidate.replace(/\./g, '');
+          if (/^(\d)\1{4,}$/.test(candidateSemPontos)) {
+            continue;
+          }
+          
+          // Ignora se aparecer em contexto de TED/TED RECEBIDA CONTA / TED ENVIADA PARA CONTA
+          if (beforeValue.includes('TED') && (beforeValue.includes('CONTA') || beforeValue.match(/TED\s+(RECEBIDA|ENVIADA)\s+PARA\s+CONTA/))) {
+            continue;
+          }
+          
+          // Ignora se aparecer após "BOLETO" seguido de número (ex: "BOLETO 12345")
+          if (beforeValue.match(/BOLETO\s+\d+$/)) {
             continue;
           }
         }
@@ -583,8 +596,24 @@ function parseSicoob(texto) {
       desc = desc.replace(/\s+/g, ' ').trim();
       desc = desc.replace(/^[^\w\s]+|[^\w\s]+$/g, '').trim();
 
-      if (!desc || desc.length < 3) {
-        desc = 'Lançamento bancário';
+      // Rejeita descrições muito curtas (provavelmente são partes extraídas incorretamente)
+      if (!desc || desc.length < 10) {
+        return; // Descrição muito curta, provavelmente extração incorreta
+      }
+
+      // Rejeita valores que são claramente números de conta (5 dígitos sem vírgula)
+      const valorInteiro = Math.abs(valor);
+      if (valorInteiro >= 10000 && valorInteiro < 100000 && !valorStr.includes(',')) {
+        // Verifica se a descrição menciona "CONTA" - confirma que é número de conta
+        const descUpper = desc.toUpperCase();
+        if (descUpper.includes('CONTA') || descUpper.includes('AGENCIA') || descUpper.includes('AGÊNCIA')) {
+          return; // É número de conta, ignora
+        }
+        // Se é número repetido (11111, 33333), também ignora
+        const valorStrSemPontos = valorStr.replace(/\./g, '');
+        if (/^(\d)\1{4,}$/.test(valorStrSemPontos)) {
+          return; // Número repetido, provavelmente conta
+        }
       }
 
       // Chave mais específica para evitar duplicatas
