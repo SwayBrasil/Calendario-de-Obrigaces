@@ -401,23 +401,29 @@ function parseSicoob(texto) {
 
     // Busca valor monetário válido (formato brasileiro: 1.234,56 ou 1234,56)
     // Busca da direita para esquerda (valores geralmente estão no final da linha)
+    // Padrões mais específicos primeiro (valores completos com separadores)
     const valorPatterns = [
-      /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/g,  // R$ 1.234,56
-      /(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s*[DC]?/g,  // 1.234,56 ou 1.234,56 D
-      /(\d+,\d{2})/g,  // 1234,56 (sem ponto de milhar)
+      // R$ 1.234,56 ou R$1234,56 (com R$ explícito)
+      /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/g,
+      // 1.234,56 ou 1234,56 no final da linha (com espaço antes)
+      /\s(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)(?:\s*[DC]?|\s*$)/g,
+      // Qualquer número com vírgula e 2 decimais (formato monetário)
+      /(\d{1,3}(?:\.\d{3})*,\d{2})/g,
+      // Número grande sem vírgula (pode ser valor sem centavos)
+      /\s(\d{4,})(?:\s|$)/g,
     ];
 
-    let valorStr = null;
-    let valorMatch = null;
-    let valorIndex = -1;
     let bestMatch = null;
 
-    // Busca todos os candidatos a valor na linha
+    // Busca todos os candidatos a valor na linha, da direita para esquerda
     for (const pattern of valorPatterns) {
       const matches = [...linha.matchAll(pattern)];
-      for (const match of matches) {
+      // Processa da direita para esquerda (valores estão no final)
+      for (let i = matches.length - 1; i >= 0; i--) {
+        const match = matches[i];
         const candidate = match[1] || match[0];
         const matchIndex = match.index;
+        const fullMatch = match[0];
         
         // Ignora se for parte da data (1-31) ou ano (2020-2030)
         const numStr = candidate.replace(/\./g, '').replace(',', '.');
@@ -433,33 +439,38 @@ function parseSicoob(texto) {
         const hasComma = candidate.includes(',');
         const decimalPlaces = hasComma ? candidate.split(',')[1]?.length || 0 : 0;
         
+        // Calcula posição relativa (quanto mais à direita, melhor)
+        const positionScore = matchIndex / Math.max(linha.length, 1);
+        
         // Se tem vírgula e 2 casas decimais, é muito provável que seja um valor
         if (hasComma && decimalPlaces === 2) {
-          // Prefere o mais à direita (final da linha)
-          if (!bestMatch || matchIndex > bestMatch.index) {
-            bestMatch = { candidate, match, index: matchIndex, score: 10 };
+          const score = 10 + positionScore; // Prioriza posição à direita
+          if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
+            bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
           }
         } else if (num > 100 && hasComma) {
           // Número grande com vírgula também é candidato
-          if (!bestMatch || bestMatch.score < 5 || matchIndex > bestMatch.index) {
-            bestMatch = { candidate, match, index: matchIndex, score: 5 };
+          const score = 5 + positionScore;
+          if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
+            bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
           }
-        } else if (num > 1000) {
+        } else if (num > 1000 && !hasComma) {
           // Número muito grande sem vírgula pode ser valor
-          if (!bestMatch || bestMatch.score < 3 || matchIndex > bestMatch.index) {
-            bestMatch = { candidate, match, index: matchIndex, score: 3 };
+          const score = 3 + positionScore;
+          if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
+            bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
           }
         }
       }
     }
 
-    if (bestMatch) {
-      valorStr = bestMatch.candidate;
-      valorMatch = bestMatch.match;
-      valorIndex = bestMatch.index;
-    } else {
+    if (!bestMatch) {
       return;
     }
+
+    const valorStr = bestMatch.candidate;
+    const valorMatch = bestMatch.match;
+    const valorIndex = bestMatch.index;
 
     try {
       const [, dia, mes, anoStr] = dataMatch;
@@ -497,7 +508,7 @@ function parseSicoob(texto) {
       
       // Remove o valor encontrado e valores colados (padrões como 1.500, 300, etc.)
       if (valorIndex >= 0) {
-        const valorFullMatch = valorMatch[0];
+        const valorFullMatch = bestMatch.fullMatch || valorMatch[0];
         // Remove o valor principal
         desc = desc.substring(0, valorIndex) + ' ' + desc.substring(valorIndex + valorFullMatch.length);
         
@@ -506,11 +517,15 @@ function parseSicoob(texto) {
         desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?$/g, '').trim();
         // Remove números simples colados no final (mas preserva números que fazem parte da descrição como "12345")
         desc = desc.replace(/\s+\d{1,4}(?:,\d+)?$/g, '').trim();
+        // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
+        desc = desc.replace(/,\d+$/g, '').trim();
       }
       
       // Remove valores que possam ter ficado colados no meio (padrões como "ABC1.500" -> "ABC")
       // Mas só remove se estiver claramente colado (sem espaço antes)
       desc = desc.replace(/([A-Z])(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/g, '$1').trim();
+      // Remove valores colados após ponto final ou vírgula (ex: "S.A.4.200" -> "S.A.")
+      desc = desc.replace(/([A-Z]\.)(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/g, '$1').trim();
       
       // Limpa espaços múltiplos e caracteres especiais
       desc = desc.replace(/\s+/g, ' ').trim();
