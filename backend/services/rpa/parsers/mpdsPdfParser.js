@@ -652,7 +652,18 @@ function parseSicoob(texto) {
       desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?$/g, '').trim();
       // Remove números simples colados no final, mas preserva números de conta (5 dígitos)
       // e números que fazem parte de descrições (ex: "BOLETO 12345", "CONTA 11111-2")
+      // Preserva padrões como "11111-2", "12345-6" (números de conta com hífen)
       desc = desc.replace(/\s+(\d{1,4}|\d{6,})(?:,\d+)?$/g, '').trim();
+      // Preserva números de conta com hífen que podem ter sido removidos
+      // Se a descrição contém "CONTA" ou "BOLETO", tenta restaurar números de conta próximos
+      if (descUpper.includes('CONTA') || descUpper.includes('BOLETO')) {
+        // Procura padrões como "CONTA 11111-2" ou "BOLETO 12345" na linha original
+        const contaMatch = linha.match(/(?:CONTA|BOLETO)\s+(\d{5}(?:-\d)?)/i);
+        if (contaMatch && !desc.includes(contaMatch[1])) {
+          // Adiciona o número de conta de volta à descrição
+          desc = desc + ' ' + contaMatch[1];
+        }
+      }
       // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
       desc = desc.replace(/,\d+$/g, '').trim();
       // Remove valores colados no meio (ex: "ABC 5.000" -> "ABC")
@@ -684,7 +695,14 @@ function parseSicoob(texto) {
       desc = desc.replace(/^[^\w\s]+|[^\w\s]+$/g, '').trim();
 
       // Rejeita descrições muito curtas (provavelmente são partes extraídas incorretamente)
-      if (!desc || desc.length < 10) {
+      // MAS: permite descrições um pouco mais curtas se contêm palavras-chave importantes
+      const descUpper = desc.toUpperCase();
+      const hasKeyword = descUpper.includes('TED') || descUpper.includes('PIX') || 
+                         descUpper.includes('RECEBIMENTO') || descUpper.includes('PAGAMENTO') ||
+                         descUpper.includes('BOLETO') || descUpper.includes('TARIFA');
+      const minLength = hasKeyword ? 8 : 10; // Reduz para 8 se tem palavra-chave
+      
+      if (!desc || desc.length < minLength) {
         return; // Descrição muito curta, provavelmente extração incorreta
       }
 

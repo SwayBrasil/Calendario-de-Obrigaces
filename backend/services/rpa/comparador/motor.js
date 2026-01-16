@@ -600,11 +600,19 @@ function compareBankVsTxt(
       // Calcula similaridade de descrição
       const sim = similarity(movBank.descricao, movTxt.descricao);
       
-      // Ajusta threshold de similaridade para descrições curtas
-      // Se uma das descrições é muito curta (<= 5 caracteres), reduz o threshold
+      // Ajusta threshold de similaridade para descrições curtas ou que começam com a mesma palavra
       const descBankShort = movBank.descricao && movBank.descricao.length <= 5;
       const descTxtShort = movTxt.descricao && movTxt.descricao.length <= 5;
-      const adjustedThreshold = (descBankShort || descTxtShort) ? Math.min(0.4, minDescriptionSimilarity * 0.7) : minDescriptionSimilarity;
+      
+      // Verifica se as descrições começam com a mesma palavra (ex: "RECEBIMENTO" vs "RECEBIMENTO CLIENTE...")
+      const descBankWords = movBank.descricao ? movBank.descricao.trim().split(/\s+/)[0].toUpperCase() : '';
+      const descTxtWords = movTxt.descricao ? movTxt.descricao.trim().split(/\s+/)[0].toUpperCase() : '';
+      const startsWithSameWord = descBankWords && descTxtWords && descBankWords === descTxtWords && descBankWords.length >= 8;
+      
+      // Reduz threshold se descrições curtas OU começam com a mesma palavra longa
+      const adjustedThreshold = (descBankShort || descTxtShort || startsWithSameWord) 
+        ? Math.min(0.4, minDescriptionSimilarity * 0.7) 
+        : minDescriptionSimilarity;
       
       if (sim < adjustedThreshold) {
         return;
