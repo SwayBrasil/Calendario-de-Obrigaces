@@ -275,6 +275,23 @@ function parseSicoob(texto) {
         continue;
       }
 
+      // Rejeita números de conta (5 dígitos sem vírgula)
+      const valorInteiro = Math.abs(valor);
+      if (valorInteiro >= 10000 && valorInteiro < 100000 && !valorStr.includes(',')) {
+        const descUpper = normalizarDescricao(desc).toUpperCase();
+        const matchText = match[0].toUpperCase();
+        if (descUpper.includes('CONTA') || descUpper.includes('BOLETO') || 
+            matchText.includes('CONTA') || matchText.includes('BOLETO') ||
+            /^(\d)\1{4,}$/.test(valorStr.replace(/\./g, ''))) {
+          continue; // É número de conta, ignora
+        }
+      }
+
+      // Rejeita descrições muito curtas
+      if (!desc || normalizarDescricao(desc).length < 10) {
+        continue;
+      }
+
       const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
       if (seen.has(chave)) {
         continue;
@@ -323,6 +340,23 @@ function parseSicoob(texto) {
         continue;
       }
 
+      // Rejeita números de conta (5 dígitos sem vírgula)
+      const valorInteiro = Math.abs(valor);
+      if (valorInteiro >= 10000 && valorInteiro < 100000 && !valorStr.includes(',')) {
+        const descUpper = normalizarDescricao(desc).toUpperCase();
+        const matchText = match[0].toUpperCase();
+        if (descUpper.includes('CONTA') || descUpper.includes('BOLETO') || 
+            matchText.includes('CONTA') || matchText.includes('BOLETO') ||
+            /^(\d)\1{4,}$/.test(valorStr.replace(/\./g, ''))) {
+          continue; // É número de conta, ignora
+        }
+      }
+
+      // Rejeita descrições muito curtas
+      if (!desc || normalizarDescricao(desc).length < 10) {
+        continue;
+      }
+
       const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
       if (seen.has(chave)) {
         continue;
@@ -368,6 +402,23 @@ function parseSicoob(texto) {
 
       const valor = parseValor(valorStr);
       if (valor === 0.0) {
+        continue;
+      }
+
+      // Rejeita números de conta (5 dígitos sem vírgula)
+      const valorInteiro = Math.abs(valor);
+      if (valorInteiro >= 10000 && valorInteiro < 100000 && !valorStr.includes(',')) {
+        const descUpper = normalizarDescricao(desc).toUpperCase();
+        const matchText = match[0].toUpperCase();
+        if (descUpper.includes('CONTA') || descUpper.includes('BOLETO') || 
+            matchText.includes('CONTA') || matchText.includes('BOLETO') ||
+            /^(\d)\1{4,}$/.test(valorStr.replace(/\./g, ''))) {
+          continue; // É número de conta, ignora
+        }
+      }
+
+      // Rejeita descrições muito curtas
+      if (!desc || normalizarDescricao(desc).length < 10) {
         continue;
       }
 
@@ -443,7 +494,8 @@ function parseSicoob(texto) {
       // Qualquer número com vírgula e 2 decimais (formato monetário)
       /(\d{1,3}(?:\.\d{3})*,\d{2})/g,
       // Número grande sem vírgula (pode ser valor sem centavos)
-      /\s(\d{4,})(?:\s|$)/g,
+      // MAS: rejeita números de 5 dígitos (10000-99999) que são provavelmente contas
+      /\s(\d{6,})(?:\s|$)/g, // Apenas números com 6+ dígitos sem vírgula
     ];
 
     let bestMatch = null;
@@ -529,15 +581,13 @@ function parseSicoob(texto) {
           }
         } else if (num > 1000 && !hasComma) {
           // Número muito grande sem vírgula pode ser valor
-          // MAS: rejeita se for número de conta (5 dígitos) em contexto suspeito
-          const linhaUpper = linha.toUpperCase();
+          // MAS: REJEITA TODOS os números de 5 dígitos (10000-99999) sem vírgula
+          // pois são quase sempre números de conta, não valores monetários
           if (num >= 10000 && num < 100000) {
-            // É número de 5 dígitos - verifica contexto
-            if (linhaUpper.includes('CONTA') || linhaUpper.includes('BOLETO') || 
-                linhaUpper.match(/TED\s+\d{5}/) || linhaUpper.match(/BOLETO\s+\d{5}/)) {
-              continue; // Rejeita - é número de conta
-            }
+            continue; // Rejeita - números de 5 dígitos sem vírgula são quase sempre contas
           }
+          // Apenas aceita números com 6+ dígitos sem vírgula como valores potenciais
+          // (ex: 100000 = R$ 100.000,00 sem centavos)
           const score = 3 + positionScore;
           if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
             bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
