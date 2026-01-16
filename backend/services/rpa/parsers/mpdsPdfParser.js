@@ -520,15 +520,17 @@ function parseSicoob(texto) {
         // Ignora anos
         if (num >= 2020 && num <= 2030) continue;
         // Ignora números que parecem contas bancárias (5 dígitos sem vírgula)
+        // MAS: só ignora se NÃO houver vírgula (números de conta não têm vírgula)
+        // Se tiver vírgula e 2 decimais, é um valor válido mesmo que a linha contenha "CONTA"
         if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
           const linhaUpper = linha.toUpperCase();
           const linhaCompleta = linhaUpper;
           const beforeValue = linhaUpper.substring(0, matchIndex);
           const afterValue = linhaUpper.substring(matchIndex + fullMatch.length);
           
-          // Ignora se a linha contém "CONTA" em qualquer lugar
+          // Ignora se a linha contém "CONTA" em qualquer lugar E o número não tem vírgula
           if (linhaCompleta.includes('CONTA') || linhaCompleta.includes('AGENCIA') || linhaCompleta.includes('AGÊNCIA')) {
-            continue;
+            continue; // É número de conta, não valor
           }
           
           // Ignora se for número repetido (11111, 33333)
@@ -687,27 +689,32 @@ function parseSicoob(texto) {
       }
 
       // Rejeita valores que são claramente números de conta (5 dígitos sem vírgula)
+      // MAS: se o valor tem vírgula e 2 decimais, é um valor válido mesmo que a descrição contenha "CONTA"
       const valorInteiro = Math.abs(valor);
       if (valorInteiro >= 10000 && valorInteiro < 100000 && !valorStr.includes(',')) {
         const descUpper = desc.toUpperCase();
         const linhaUpper = linha.toUpperCase();
         
-        // Verifica se a descrição ou linha menciona "CONTA", "BOLETO", etc.
-        if (descUpper.includes('CONTA') || descUpper.includes('AGENCIA') || descUpper.includes('AGÊNCIA') ||
-            linhaUpper.includes('CONTA') || linhaUpper.includes('BOLETO')) {
-          return; // É número de conta, ignora
-        }
-        
-        // Se é número repetido (11111, 33333), também ignora
-        const valorStrSemPontos = valorStr.replace(/\./g, '');
-        if (/^(\d)\1{4,}$/.test(valorStrSemPontos)) {
-          return; // Número repetido, provavelmente conta
-        }
-        
-        // Se a linha contém padrões como "TED 11111", "BOLETO 12345", etc.
-        if (linhaUpper.match(/TED\s+\d{5}/) || linhaUpper.match(/BOLETO\s+\d{5}/) ||
-            linhaUpper.match(/CONTA\s+\d{5}/) || linhaUpper.match(/\d{5}\s*[-]\s*\d/)) {
-          return; // É número de conta
+        // Se o valor tem vírgula e 2 decimais, é válido (ex: 3000.00, 3500.00)
+        // Só rejeita se for número de conta sem vírgula
+        if (!valorStr.includes(',')) {
+          // Verifica se a descrição ou linha menciona "CONTA", "BOLETO", etc.
+          if (descUpper.includes('CONTA') || descUpper.includes('AGENCIA') || descUpper.includes('AGÊNCIA') ||
+              linhaUpper.includes('CONTA') || linhaUpper.includes('BOLETO')) {
+            return; // É número de conta, ignora
+          }
+          
+          // Se é número repetido (11111, 33333), também ignora
+          const valorStrSemPontos = valorStr.replace(/\./g, '');
+          if (/^(\d)\1{4,}$/.test(valorStrSemPontos)) {
+            return; // Número repetido, provavelmente conta
+          }
+          
+          // Se a linha contém padrões como "TED 11111", "BOLETO 12345", etc.
+          if (linhaUpper.match(/TED\s+\d{5}/) || linhaUpper.match(/BOLETO\s+\d{5}/) ||
+              linhaUpper.match(/CONTA\s+\d{5}/) || linhaUpper.match(/\d{5}\s*[-]\s*\d/)) {
+            return; // É número de conta
+          }
         }
       }
 

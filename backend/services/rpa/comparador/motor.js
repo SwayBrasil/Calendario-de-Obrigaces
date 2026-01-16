@@ -515,13 +515,28 @@ function compareBankVsTxt(
     const str2Norm = normalizarDescricao(str2).trim();
     
     // Se uma descrição contém a outra (ex: "PIX" está em "PIX RECEBIDO DE MARIA COSTA")
+    // ou "RECEBIMENTO" está em "RECEBIMENTO CLIENTE ABC LTDA"
     if (str1Norm.length > 0 && str2Norm.length > 0) {
       if (str1Norm.includes(str2Norm) || str2Norm.includes(str1Norm)) {
         // Se uma é substring da outra, retorna alta similaridade
         const shorter = str1Norm.length < str2Norm.length ? str1Norm : str2Norm;
         const longer = str1Norm.length >= str2Norm.length ? str1Norm : str2Norm;
         // Similaridade baseada no tamanho da substring vs tamanho da string maior
-        return Math.max(0.7, shorter.length / longer.length);
+        // Se a substring curta tem pelo menos 8 caracteres, aumenta a similaridade
+        const baseSimilarity = shorter.length / longer.length;
+        if (shorter.length >= 8) {
+          return Math.max(0.75, baseSimilarity); // Alta similaridade para palavras-chave longas
+        }
+        return Math.max(0.7, baseSimilarity);
+      }
+      
+      // Verifica se uma descrição começa com a outra (ex: "RECEBIMENTO" vs "RECEBIMENTO CLIENTE...")
+      if (str1Norm.startsWith(str2Norm) || str2Norm.startsWith(str1Norm)) {
+        const shorter = str1Norm.length < str2Norm.length ? str1Norm : str2Norm;
+        const longer = str1Norm.length >= str2Norm.length ? str1Norm : str2Norm;
+        if (shorter.length >= 8) {
+          return Math.max(0.8, shorter.length / longer.length); // Muito alta similaridade para prefixos
+        }
       }
     }
     
