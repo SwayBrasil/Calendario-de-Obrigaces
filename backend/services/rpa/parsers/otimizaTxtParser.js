@@ -12,12 +12,21 @@ function parseValor(valorStr) {
   }
 
   let valor = valorStr.trim();
+  
+  // Remove caracteres inválidos (mantém apenas dígitos, pontos, vírgulas e sinais)
+  valor = valor.replace(/[^\d.,-]/g, '');
 
   // Detecta sinal negativo
   let negativo = false;
   if (valor.startsWith('-')) {
     negativo = true;
     valor = valor.substring(1).trim();
+  }
+
+  // REJEITA se parece ser uma conta contábil (formato X.X.X com mais de 2 pontos)
+  if (/^\d+\.\d+\.\d+/.test(valor)) {
+    // É conta contábil, não valor monetário
+    return 0.0;
   }
 
   // Detecta formato (brasileiro vs americano)
@@ -40,13 +49,45 @@ function parseValor(valorStr) {
       // Americano: vírgula milhares
       valor = valor.replace(/,/g, '');
     }
+  } else if (valor.includes('.')) {
+    // Só ponto: verifica se é decimal (X.XX) ou milhares (X.XXX)
+    const partes = valor.split('.');
+    if (partes.length === 2 && partes[1].length <= 2) {
+      // Decimal: X.XX (formato americano ou valor simples)
+      // Mantém como está
+    } else if (partes.length > 2) {
+      // Múltiplos pontos: pode ser milhares (1.234.56) ou conta (1.2.1)
+      // Se tem mais de 2 pontos, provavelmente é conta contábil
+      if (partes.length > 2 && partes.every(p => p.length <= 2)) {
+        // Cada parte tem 1-2 dígitos: provavelmente é conta (1.2.1)
+        return 0.0;
+      }
+      // Remove pontos de milhares (mantém apenas o último como decimal)
+      const ultimaParte = partes[partes.length - 1];
+      if (ultimaParte.length <= 2) {
+        // Última parte tem 1-2 dígitos: é decimal
+        valor = partes.slice(0, -1).join('') + '.' + ultimaParte;
+      } else {
+        // Última parte tem mais de 2 dígitos: não é decimal, remove todos os pontos
+        valor = valor.replace(/\./g, '');
+      }
+    }
   }
 
   try {
+    // Valida que o valor só contém caracteres numéricos válidos
+    if (!/^[\d.]+$/.test(valor)) {
+      console.warn(`[OTIMIZA-PARSER] Valor contém caracteres inválidos: "${valorStr}" -> "${valor}"`);
+      return 0.0;
+    }
     const num = parseFloat(valor);
+    if (isNaN(num)) {
+      console.warn(`[OTIMIZA-PARSER] parseFloat retornou NaN para: "${valorStr}" -> "${valor}"`);
+      return 0.0;
+    }
     return negativo ? -num : num;
   } catch (e) {
-    console.warn(`Não foi possível converter valor: ${valorStr}`);
+    console.warn(`[OTIMIZA-PARSER] Erro ao converter valor "${valorStr}": ${e.message}`);
     return 0.0;
   }
 }
@@ -60,7 +101,8 @@ function parseDataSafe(dataStr) {
     return null;
   }
 
-  const data = dataStr.trim();
+  // Remove caracteres inválidos (mantém apenas dígitos, barras, hífens e espaços)
+  let data = dataStr.trim().replace(/[^\d/\-\s]/g, '').replace(/\s+/g, ' ');
 
   // Valida formato antes de tentar parsear
   const formatos = [
@@ -186,6 +228,38 @@ function parseOtimizaTxt(filePath, strict = false) {
                 documento = partes[3] || null;
                 valorStr = partes[4] || null;
                 valorIdx = 4;
+                
+                // VALIDAÇÃO CRÍTICA: Verifica se o valorStr não é uma conta contábil
+                // Se partes[4] tem formato de conta (X.X.X), então os campos estão trocados
+                if (valorStr && /^\d+\.\d+\.\d+/.test(valorStr)) {
+                  // O valor está no lugar errado - CORRIGE
+                  // Se partes[2] parece ser um valor monetário (formato X.XX), troca
+                  if (partes[2] && /^\d+\.\d{2}$/.test(partes[2])) {
+                    // Troca: partes[2] é o valor, partes[4] é a conta
+                    const tempAccount = accountCode;
+                    accountCode = partes[4] || null;
+                    valorStr = partes[2] || null;
+                    valorIdx = 2;
+                    console.warn(`[OTIMIZA-PARSER] Linha ${numLinha + 1}: Campos trocados detectados. Corrigindo: conta=${accountCode}, valor=${valorStr}`);
+                  } else {
+                    // Procura o valor real nos outros campos (procura formato X.XX ou X,XX)
+                    for (let i = 0; i < partes.length; i++) {
+                      if (i === 0 || i === 1) continue; // Pula data e descrição
+                      const parte = partes[i];
+                      // Procura valor monetário: tem pelo menos 2 casas decimais e não é conta X.X.X
+                      if (parte && (/^\d+\.\d{2}$/.test(parte) || /^\d+,\d{2}$/.test(parte)) && !/^\d+\.\d+\.\d+/.test(parte)) {
+                        valorStr = parte;
+                        valorIdx = i;
+                        // Se encontrou o valor em outro lugar, mantém a conta original
+                        if (i !== 2) {
+                          accountCode = partes[2] || null;
+                        }
+                        console.warn(`[OTIMIZA-PARSER] Linha ${numLinha + 1}: Valor encontrado no índice ${i}: ${valorStr}`);
+                        break;
+                      }
+                    }
+                  }
+                }
               } else {
                 // Formato variável - detecta dinamicamente
                 // Verifica se primeira parte é data
@@ -254,7 +328,17 @@ function parseOtimizaTxt(filePath, strict = false) {
               }
 
               const valor = parseValor(valorStr);
-              if (valor === 0.0) {
+              if (valor === 0.0 && valorStr !== '0' && valorStr !== '0.00') {
+                issues.push(`Linha ${numLinha + 1}: Valor inválido "${valorStr}"`);
+                if (strict) throw new Error(`Linha ${numLinha + 1}: Valor inválido "${valorStr}"`);
+                continue;
+              }
+              
+              // DEBUG: Verifica se o valor parece ser uma conta contábil (formato X.X.X)
+              // Se o valor parseado é muito pequeno e o valorStr tem formato de conta, há erro
+              if (Math.abs(valor) < 100 && /^\d+\.\d+\.\d+/.test(valorStr)) {
+                issues.push(`Linha ${numLinha + 1}: Valor "${valorStr}" parece ser uma conta contábil, não um valor monetário`);
+                if (strict) throw new Error(`Linha ${numLinha + 1}: Valor parece ser conta contábil`);
                 continue;
               }
 

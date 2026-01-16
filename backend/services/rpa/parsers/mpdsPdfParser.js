@@ -13,6 +13,9 @@ function parseValor(valorStr) {
   }
 
   let valor = valorStr.trim();
+  
+  // Remove caracteres inválidos (mantém apenas dígitos, pontos, vírgulas, R$, sinais e letras D/C)
+  valor = valor.replace(/[^\d.,R$DCdc\s-]/g, '');
 
   // Remove R$ e espaços
   valor = valor.replace(/R\$\s*/g, '');
@@ -42,13 +45,19 @@ function parseValor(valorStr) {
   }
 
   try {
+    // Valida que o valor só contém caracteres numéricos válidos após limpeza
+    if (!/^[\d.]+$/.test(valor)) {
+      console.warn(`[PDF-PARSER] Valor contém caracteres inválidos: "${valorStr}" -> "${valor}"`);
+      return 0.0;
+    }
     const num = parseFloat(valor);
     if (isNaN(num)) {
+      console.warn(`[PDF-PARSER] parseFloat retornou NaN para: "${valorStr}" -> "${valor}"`);
       return 0.0;
     }
     return negativo ? -Math.abs(num) : Math.abs(num);
   } catch (e) {
-    console.warn(`Não foi possível converter valor: ${valorStr}`);
+    console.warn(`[PDF-PARSER] Erro ao converter valor "${valorStr}": ${e.message}`);
     return 0.0;
   }
 }
@@ -61,7 +70,8 @@ function parseData(dataStr) {
     return null;
   }
 
-  const data = dataStr.trim().replace(/\s+/g, ' ');
+  // Remove caracteres inválidos (mantém apenas dígitos, barras, hífens e espaços)
+  let data = dataStr.trim().replace(/[^\d/\-\s]/g, '').replace(/\s+/g, ' ');
 
   const formatos = [
     'dd/MM/yyyy',
@@ -522,7 +532,13 @@ function parseSicoob(texto) {
         // Ignora números que parecem contas bancárias (5 dígitos sem vírgula)
         // MAS: só ignora se NÃO houver vírgula (números de conta não têm vírgula)
         // Se tiver vírgula e 2 decimais, é um valor válido mesmo que a linha contenha "CONTA"
-        if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
+        // IMPORTANTE: Valores com vírgula e 2 decimais são SEMPRE válidos, mesmo em contexto de "CONTA"
+        const hasComma = candidate.includes(',');
+        const decimalPlaces = hasComma ? candidate.split(',')[1]?.length || 0 : 0;
+        const isMonetaryValue = hasComma && decimalPlaces === 2;
+        
+        // Se é um valor monetário válido (com vírgula e 2 decimais), NUNCA rejeita
+        if (!isMonetaryValue && num >= 10000 && num < 100000 && !hasComma) {
           const linhaUpper = linha.toUpperCase();
           const linhaCompleta = linhaUpper;
           const beforeValue = linhaUpper.substring(0, matchIndex);
@@ -540,6 +556,7 @@ function parseSicoob(texto) {
           }
           
           // Ignora se aparecer em contexto de TED/TED RECEBIDA CONTA / TED ENVIADA PARA CONTA
+          // MAS: só ignora se NÃO for um valor monetário válido
           if (linhaCompleta.includes('TED') && linhaCompleta.includes('CONTA')) {
             continue;
           }
@@ -563,20 +580,23 @@ function parseSicoob(texto) {
         if (num >= 100000 && !candidate.includes(',')) continue;
         
         // Prefere valores com vírgula e 2 casas decimais
+        // IMPORTANTE: Valores monetários válidos (com vírgula e 2 decimais) têm prioridade máxima
         const hasComma = candidate.includes(',');
         const decimalPlaces = hasComma ? candidate.split(',')[1]?.length || 0 : 0;
+        const isMonetaryValue = hasComma && decimalPlaces === 2;
         
         // Calcula posição relativa (quanto mais à direita, melhor)
         const positionScore = matchIndex / Math.max(linha.length, 1);
         
         // Se tem vírgula e 2 casas decimais, é muito provável que seja um valor
-        if (hasComma && decimalPlaces === 2) {
-          const score = 10 + positionScore; // Prioriza posição à direita
+        // PRIORIDADE MÁXIMA: valores monetários válidos são sempre escolhidos
+        if (isMonetaryValue) {
+          const score = 20 + positionScore; // Prioridade máxima para valores monetários válidos
           if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
             bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
           }
         } else if (num > 100 && hasComma) {
-          // Número grande com vírgula também é candidato
+          // Número grande com vírgula também é candidato (mas não tem 2 decimais)
           const score = 5 + positionScore;
           if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
             bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
@@ -646,42 +666,56 @@ function parseSicoob(texto) {
         // Remove o valor principal
         desc = desc.substring(0, valorIndex) + ' ' + desc.substring(valorIndex + valorFullMatch.length);
         
-      // Remove valores colados no final da descrição (padrões como "1.500", "300", "25,0")
-      // MAS preserva números de conta (5 dígitos com hífen ou sem, ex: "11111-2", "12345")
-      // Remove números com ponto de milhar colados no final (mas não números de conta)
-      desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?$/g, '').trim();
-      // Remove números simples colados no final, mas preserva números de conta (5 dígitos)
-      // e números que fazem parte de descrições (ex: "BOLETO 12345", "CONTA 11111-2")
-      // Preserva padrões como "11111-2", "12345-6" (números de conta com hífen)
-      desc = desc.replace(/\s+(\d{1,4}|\d{6,})(?:,\d+)?$/g, '').trim();
-      // Preserva números de conta com hífen que podem ter sido removidos
-      // Se a descrição contém "CONTA" ou "BOLETO", tenta restaurar números de conta próximos
-      if (descUpper.includes('CONTA') || descUpper.includes('BOLETO')) {
-        // Procura padrões como "CONTA 11111-2" ou "BOLETO 12345" na linha original
-        const contaMatch = linha.match(/(?:CONTA|BOLETO)\s+(\d{5}(?:-\d)?)/i);
-        if (contaMatch && !desc.includes(contaMatch[1])) {
-          // Adiciona o número de conta de volta à descrição
-          desc = desc + ' ' + contaMatch[1];
-        }
-      }
-      // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
-      desc = desc.replace(/,\d+$/g, '').trim();
-      // Remove valores colados no meio (ex: "ABC 5.000" -> "ABC")
-      // MAS preserva números de conta (5 dígitos) que aparecem após palavras-chave
-      desc = desc.replace(/\s+(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s+/g, (match, num) => {
-        // Se o número é 5 dígitos e aparece após "CONTA", "BOLETO", etc., preserva
-        const numSemPontos = num.replace(/\./g, '').replace(',', '');
-        if (numSemPontos.length === 5) {
-          const beforeMatch = desc.substring(0, desc.indexOf(match)).toUpperCase();
-          if (beforeMatch.includes('CONTA') || beforeMatch.includes('BOLETO') || 
-              beforeMatch.includes('TED') || beforeMatch.match(/NF\d*$/i)) {
-            return match; // Preserva número de conta
+        // Remove valores colados no final da descrição (padrões como "1.500", "300", "25,0")
+        // MAS preserva números de conta (5 dígitos com hífen ou sem, ex: "11111-2", "12345")
+        // Remove números com ponto de milhar colados no final (mas não números de conta)
+        desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?$/g, '').trim();
+        // Remove números simples colados no final, mas preserva números de conta (5 dígitos)
+        // e números que fazem parte de descrições (ex: "BOLETO 12345", "CONTA 11111-2")
+        // Preserva padrões como "11111-2", "12345-6" (números de conta com hífen)
+        desc = desc.replace(/\s+(\d{1,4}|\d{6,})(?:,\d+)?$/g, '').trim();
+        
+        // Preserva números de conta com hífen que podem ter sido removidos
+        // Procura padrões como "CONTA 11111-2", "BOLETO 12345", "TED ... CONTA 11111-2" na linha original
+        const descUpperTemp = desc.toUpperCase();
+        if (descUpperTemp.includes('CONTA') || descUpperTemp.includes('BOLETO') || descUpperTemp.includes('TED')) {
+          // Procura padrões de conta na linha original (antes da limpeza)
+          const contaPatterns = [
+            /(?:CONTA|BOLETO)\s+(\d{5}(?:-\d)?)/i,
+            /TED\s+(?:RECEBIDA|ENVIADA|PARA|DE)\s+CONTA\s+(\d{5}(?:-\d)?)/i,
+            /(\d{5}-\d)/, // Padrão direto: 11111-2
+          ];
+          for (const pattern of contaPatterns) {
+            const contaMatch = linha.match(pattern);
+            if (contaMatch) {
+              const contaNum = contaMatch[1] || contaMatch[0];
+              if (contaNum && !desc.includes(contaNum)) {
+                // Adiciona o número de conta de volta à descrição
+                desc = desc + ' ' + contaNum;
+                break;
+              }
+            }
           }
         }
-        return ' '; // Remove valor monetário
-      }).trim();
-      // Remove "D" ou "C" soltos no final (indicadores de débito/crédito)
-      desc = desc.replace(/\s+[DC]\s*$/gi, '').trim();
+        
+        // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
+        desc = desc.replace(/,\d+$/g, '').trim();
+        // Remove valores colados no meio (ex: "ABC 5.000" -> "ABC")
+        // MAS preserva números de conta (5 dígitos) que aparecem após palavras-chave
+        desc = desc.replace(/\s+(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s+/g, (match, num) => {
+          // Se o número é 5 dígitos e aparece após "CONTA", "BOLETO", etc., preserva
+          const numSemPontos = num.replace(/\./g, '').replace(',', '');
+          if (numSemPontos.length === 5) {
+            const beforeMatch = desc.substring(0, desc.indexOf(match)).toUpperCase();
+            if (beforeMatch.includes('CONTA') || beforeMatch.includes('BOLETO') || 
+                beforeMatch.includes('TED') || beforeMatch.match(/NF\d*$/i)) {
+              return match; // Preserva número de conta
+            }
+          }
+          return ' '; // Remove valor monetário
+        }).trim();
+        // Remove "D" ou "C" soltos no final (indicadores de débito/crédito)
+        desc = desc.replace(/\s+[DC]\s*$/gi, '').trim();
       }
       
       // Remove valores que possam ter ficado colados no meio (padrões como "ABC1.500" -> "ABC")
@@ -837,11 +871,16 @@ function parseMpdsPdf(filePath, strict = false) {
 
         // Mensagens conhecidas do pdf-parse/pdf.js para PDFs corrompidos ou não suportados
         if (combined.includes('bad xref entry') || combined.includes('invalid pdf') || combined.includes('formaterror')) {
-          return reject(
-            new Error(
-              'PDF inválido ou corrompido. Baixe novamente o extrato ou exporte em CSV/OFX (PDF precisa ter texto selecionável).'
-            )
-          );
+          let errorMessage = 'PDF inválido ou corrompido. ';
+          
+          // Mensagem específica para "bad XRef entry" (geralmente PDFs gerados por pdfkit)
+          if (combined.includes('bad xref entry')) {
+            errorMessage += 'Este PDF pode ter sido gerado por uma ferramenta incompatível. ';
+          }
+          
+          errorMessage += 'Por favor, baixe o extrato diretamente do app/banco ou exporte em CSV/OFX. PDFs precisam ter texto selecionável (não podem ser apenas imagens).';
+          
+          return reject(new Error(errorMessage));
         }
 
         reject(error);

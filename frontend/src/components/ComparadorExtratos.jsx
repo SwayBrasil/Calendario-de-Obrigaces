@@ -95,7 +95,14 @@ const ComparadorExtratos = () => {
     }
 
     if (!mpdsPdfFile) {
-      setErro('Selecione o extrato bancário em PDF (Nubank/Sicoob).');
+      setErro('Selecione o extrato bancário em PDF ou CSV (Nubank/Sicoob).');
+      return;
+    }
+    
+    // Valida extensão do arquivo
+    const mpdsExt = mpdsPdfFile.name.toLowerCase();
+    if (!mpdsExt.endsWith('.pdf') && !mpdsExt.endsWith('.csv')) {
+      setErro('O extrato bancário deve ser um arquivo PDF ou CSV.');
       return;
     }
 
@@ -220,10 +227,10 @@ const ComparadorExtratos = () => {
 
             <div className="form-row">
               <label className="file-label">
-                Extrato bancário (PDF) *
+                Extrato bancário (PDF ou CSV) *
                 <input
                   type="file"
-                  accept=".pdf,application/pdf"
+                  accept=".pdf,application/pdf,.csv,text/csv"
                   onChange={(e) => {
                     const file = e.target.files && e.target.files[0] ? e.target.files[0] : null;
                     setMpdsPdfFile(file);
@@ -231,7 +238,7 @@ const ComparadorExtratos = () => {
                   required
                 />
                 <small className="file-hint">
-                  Baixe o extrato do app/banco (Nubank ou Sicoob) e envie aqui
+                  Baixe o extrato do app/banco (Nubank ou Sicoob) em PDF ou CSV e envie aqui
                 </small>
               </label>
               {mpdsPdfFile && (
