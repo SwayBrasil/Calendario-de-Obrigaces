@@ -73,6 +73,22 @@ const Home = () => {
               </button>
             </div>
           )}
+
+          <div
+            className="square"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => e.key === 'Enter' && navigate('/comparador-extratos')}
+          >
+            <button
+              className="home-button"
+              style={{ backgroundColor: '#2563eb' }}
+              onClick={() => navigate('/comparador-extratos')}
+              aria-label="Comparador de Extratos"
+            >
+              Comparador de Extratos
+            </button>
+          </div>
         </div>
 
         <button

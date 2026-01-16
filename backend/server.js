@@ -64,6 +64,9 @@ const { criarTarefasMes, criarTarefasAnoCompleto, OBRIGACOES_TRIBUTARIAS } = req
 // Importar sistema automatizado da agenda tributária
 const { criarTarefasComDadosAPI, buscarAgendaTributariaAtualizada, AGENDA_TRIBUTARIA_COMPLETA } = require('./scripts/agenda-tributaria-api');
 
+// Importar rotas RPA Domínio
+const rpaRoutes = require('./routes/rpaRoutes');
+
 // Compat: aceita requests que chegaram como /api/:splat (rewrite errado no Static Site)
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/:')) {
@@ -1941,6 +1944,10 @@ app.post('/api/agenda-tributaria/criar-ano-api', authenticateToken, async (req, 
     res.status(500).json({ error: 'Erro ao criar tarefas do ano com API: ' + error.message });
   }
 });
+
+// Rotas RPA Domínio
+const rpaRoutes = require('./routes/rpaRoutes');
+app.use('/api', rpaRoutes);
 
 // servir build do frontend (Vite) pelo Node
 const frontendDist = path.resolve(__dirname, '../frontend/dist');

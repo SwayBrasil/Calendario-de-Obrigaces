@@ -20,3 +20,8 @@ export const validateToken = (token) => {
   // Aceita tokens mock ou tokens Firebase
   return isMockToken(token) || token.length > 20;
 };
+
+export const getAuthToken = () => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem('authToken');
+};

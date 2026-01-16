@@ -7,6 +7,7 @@ import ForgotPassword from './components/ForgotPassword';
 import Home from './components/Home';
 import Calendario from './components/Calendario'; // Importa o novo Calendario.jsx
 import GerenciarUsuarios from './components/GerenciarUsuarios';
+import ComparadorExtratos from './components/ComparadorExtratos';
 import 'bootstrap/dist/css/bootstrap.min.css';
 
 const ProtectedRoute = ({ children }) => {
@@ -28,6 +29,7 @@ const App = () => {
       <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
       <Route path="/calendario" element={<ProtectedRoute><Calendario /></ProtectedRoute>} />
       <Route path="/gerenciar-usuarios" element={<ProtectedRoute><GerenciarUsuarios /></ProtectedRoute>} />
+      <Route path="/comparador-extratos" element={<ProtectedRoute><ComparadorExtratos /></ProtectedRoute>} />
     </Routes>
   );
 };

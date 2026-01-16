@@ -147,6 +147,128 @@ function initializeDatabase() {
       else console.log('✅ Tabela arquivo_logs criada/verificada com sucesso!');
     });
 
+    // 6) comparacoes (RPA Domínio)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS comparacoes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        criado_em DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        started_at DATETIME,
+        finished_at DATETIME,
+        periodo_inicio DATE NOT NULL,
+        periodo_fim DATE NOT NULL,
+        source_type VARCHAR(50) DEFAULT 'OTIMIZA_TXT',
+        bank_source_type VARCHAR(50) DEFAULT 'CSV',
+        input_files TEXT,
+        status VARCHAR(50) DEFAULT 'pendente',
+        erro TEXT,
+        qtd_lancamentos_extrato INTEGER,
+        qtd_lancamentos_razao INTEGER,
+        qtd_divergencias INTEGER,
+        parsing_issues TEXT
+      )
+    `, (err) => {
+      if (err) console.error('❌ Erro ao criar tabela comparacoes:', err.message);
+      else console.log('✅ Tabela comparacoes criada/verificada com sucesso!');
+    });
+
+    // 7) divergencias (RPA Domínio)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS divergencias (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        comparacao_id INTEGER NOT NULL,
+        tipo VARCHAR(50) NOT NULL,
+        descricao TEXT NOT NULL,
+        data_extrato DATE,
+        descricao_extrato VARCHAR(255),
+        valor_extrato REAL,
+        documento_extrato VARCHAR(100),
+        conta_contabil_extrato VARCHAR(100),
+        data_dominio DATE,
+        descricao_dominio VARCHAR(255),
+        valor_dominio REAL,
+        documento_dominio VARCHAR(100),
+        conta_contabil_dominio VARCHAR(100),
+        FOREIGN KEY (comparacao_id) REFERENCES comparacoes (id) ON DELETE CASCADE
+      )
+    `, (err) => {
+      if (err) console.error('❌ Erro ao criar tabela divergencias:', err.message);
+      else console.log('✅ Tabela divergencias criada/verificada com sucesso!');
+    });
+
+    // 8) chart_of_accounts (RPA Domínio)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS chart_of_accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source VARCHAR(50) DEFAULT 'dominio' NOT NULL,
+        account_code VARCHAR(100) NOT NULL,
+        account_name VARCHAR(255) NOT NULL,
+        account_level INTEGER,
+        parent_code VARCHAR(100),
+        account_type VARCHAR(50),
+        nature VARCHAR(50),
+        is_active BOOLEAN DEFAULT 1 NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        UNIQUE(source, account_code)
+      )
+    `, (err) => {
+      if (err) console.error('❌ Erro ao criar tabela chart_of_accounts:', err.message);
+      else console.log('✅ Tabela chart_of_accounts criada/verificada com sucesso!');
+    });
+
+    // 9) account_validation_rules (RPA Domínio)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS account_validation_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name VARCHAR(255) NOT NULL,
+        is_enabled BOOLEAN DEFAULT 1 NOT NULL,
+        match_field VARCHAR(100) NOT NULL,
+        match_value VARCHAR(255) NOT NULL,
+        allowed_account_prefixes TEXT,
+        allowed_account_codes TEXT,
+        blocked_account_prefixes TEXT,
+        blocked_account_codes TEXT,
+        severity VARCHAR(20) DEFAULT 'error' NOT NULL,
+        message TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL
+      )
+    `, (err) => {
+      if (err) console.error('❌ Erro ao criar tabela account_validation_rules:', err.message);
+      else console.log('✅ Tabela account_validation_rules criada/verificada com sucesso!');
+    });
+
+    // 10) account_validation_results (RPA Domínio)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS account_validation_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        comparacao_id INTEGER NOT NULL,
+        lancamento_key VARCHAR(255) NOT NULL,
+        account_code VARCHAR(100) NOT NULL,
+        status VARCHAR(20) NOT NULL,
+        reason_code VARCHAR(50) NOT NULL,
+        message TEXT NOT NULL,
+        expected TEXT,
+        meta TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        FOREIGN KEY (comparacao_id) REFERENCES comparacoes (id) ON DELETE CASCADE
+      )
+    `, (err) => {
+      if (err) console.error('❌ Erro ao criar tabela account_validation_results:', err.message);
+      else console.log('✅ Tabela account_validation_results criada/verificada com sucesso!');
+    });
+
+    // Criar índices para melhor performance
+    db.run(`CREATE INDEX IF NOT EXISTS idx_divergencias_comparacao_id ON divergencias(comparacao_id)`, (err) => {
+      if (err) console.error('❌ Erro ao criar índice divergencias:', err.message);
+    });
+    db.run(`CREATE INDEX IF NOT EXISTS idx_chart_of_accounts_source_code ON chart_of_accounts(source, account_code)`, (err) => {
+      if (err) console.error('❌ Erro ao criar índice chart_of_accounts:', err.message);
+    });
+    db.run(`CREATE INDEX IF NOT EXISTS idx_validation_results_comparacao_id ON account_validation_results(comparacao_id)`, (err) => {
+      if (err) console.error('❌ Erro ao criar índice validation_results:', err.message);
+    });
+
     // Seed do usuário "system" (evita falha de FK ao criar tarefas automáticas)
     db.get('SELECT uid FROM usuarios WHERE uid = ?', ['system'], (err, row) => {
       if (err) {
@@ -752,9 +874,444 @@ function getActivityLogs(userId = null, limit = 100) {
     });
 }
 
+// ============================================================================
+// FUNÇÕES RPA DOMÍNIO - Comparações
+// ============================================================================
+
+function createComparacao(comparacaoData) {
+  return new Promise((resolve, reject) => {
+    const {
+      periodo_inicio,
+      periodo_fim,
+      source_type = 'OTIMIZA_TXT',
+      bank_source_type = 'CSV',
+      input_files = null,
+      status = 'pendente'
+    } = comparacaoData;
+
+    const sql = `
+      INSERT INTO comparacoes (periodo_inicio, periodo_fim, source_type, bank_source_type, input_files, status)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    const inputFilesJson = input_files ? JSON.stringify(input_files) : null;
+
+    db.run(sql, [periodo_inicio, periodo_fim, source_type, bank_source_type, inputFilesJson, status], function(err) {
+      if (err) {
+        console.error('❌ Erro ao criar comparação:', err.message);
+        reject(err);
+      } else {
+        console.log(`✅ Comparação criada com sucesso (ID: ${this.lastID})`);
+        resolve({ id: this.lastID, ...comparacaoData });
+      }
+    });
+  });
+}
+
+function getComparacaoById(id) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT * FROM comparacoes WHERE id = ?`;
+    db.get(sql, [id], (err, row) => {
+      if (err) {
+        console.error('❌ Erro ao buscar comparação:', err.message);
+        reject(err);
+      } else if (!row) {
+        resolve(null);
+      } else {
+        // Parse JSON fields
+        if (row.input_files) {
+          try {
+            row.input_files = JSON.parse(row.input_files);
+          } catch (e) {
+            row.input_files = null;
+          }
+        }
+        if (row.parsing_issues) {
+          try {
+            row.parsing_issues = JSON.parse(row.parsing_issues);
+          } catch (e) {
+            row.parsing_issues = null;
+          }
+        }
+        resolve(row);
+      }
+    });
+  });
+}
+
+function listComparacoes(skip = 0, limit = 100) {
+  return new Promise((resolve, reject) => {
+    const sql = `
+      SELECT * FROM comparacoes 
+      ORDER BY criado_em DESC 
+      LIMIT ? OFFSET ?
+    `;
+    db.all(sql, [limit, skip], (err, rows) => {
+      if (err) {
+        console.error('❌ Erro ao listar comparações:', err.message);
+        reject(err);
+      } else {
+        // Parse JSON fields
+        rows.forEach(row => {
+          if (row.input_files) {
+            try {
+              row.input_files = JSON.parse(row.input_files);
+            } catch (e) {
+              row.input_files = null;
+            }
+          }
+          if (row.parsing_issues) {
+            try {
+              row.parsing_issues = JSON.parse(row.parsing_issues);
+            } catch (e) {
+              row.parsing_issues = null;
+            }
+          }
+        });
+        resolve(rows);
+      }
+    });
+  });
+}
+
+function updateComparacaoStatus(id, status, erro = null, stats = {}) {
+  return new Promise((resolve, reject) => {
+    const updates = [];
+    const params = [];
+
+    updates.push('status = ?');
+    params.push(status);
+
+    if (erro !== null) {
+      updates.push('erro = ?');
+      params.push(erro);
+    }
+
+    if (stats.started_at) {
+      updates.push('started_at = ?');
+      params.push(stats.started_at);
+    }
+
+    if (stats.finished_at) {
+      updates.push('finished_at = ?');
+      params.push(stats.finished_at);
+    }
+
+    if (stats.qtd_lancamentos_extrato !== undefined) {
+      updates.push('qtd_lancamentos_extrato = ?');
+      params.push(stats.qtd_lancamentos_extrato);
+    }
+
+    if (stats.qtd_lancamentos_razao !== undefined) {
+      updates.push('qtd_lancamentos_razao = ?');
+      params.push(stats.qtd_lancamentos_razao);
+    }
+
+    if (stats.qtd_divergencias !== undefined) {
+      updates.push('qtd_divergencias = ?');
+      params.push(stats.qtd_divergencias);
+    }
+
+    if (stats.parsing_issues) {
+      updates.push('parsing_issues = ?');
+      params.push(JSON.stringify(stats.parsing_issues));
+    }
+
+    params.push(id);
+
+    const sql = `UPDATE comparacoes SET ${updates.join(', ')} WHERE id = ?`;
+
+    db.run(sql, params, function(err) {
+      if (err) {
+        console.error('❌ Erro ao atualizar comparação:', err.message);
+        reject(err);
+      } else {
+        console.log(`✅ Comparação ${id} atualizada`);
+        resolve({ id, changes: this.changes });
+      }
+    });
+  });
+}
+
+function deleteComparacao(id) {
+  return new Promise((resolve, reject) => {
+    // CASCADE vai deletar divergencias e validation_results automaticamente
+    const sql = `DELETE FROM comparacoes WHERE id = ?`;
+    db.run(sql, [id], function(err) {
+      if (err) {
+        console.error('❌ Erro ao deletar comparação:', err.message);
+        reject(err);
+      } else {
+        console.log(`✅ Comparação ${id} deletada`);
+        resolve({ id, deletedRows: this.changes });
+      }
+    });
+  });
+}
+
+// ============================================================================
+// FUNÇÕES RPA DOMÍNIO - Divergências
+// ============================================================================
+
+function createDivergencia(divergenciaData) {
+  return new Promise((resolve, reject) => {
+    const {
+      comparacao_id,
+      tipo,
+      descricao,
+      data_extrato,
+      descricao_extrato,
+      valor_extrato,
+      documento_extrato,
+      conta_contabil_extrato,
+      data_dominio,
+      descricao_dominio,
+      valor_dominio,
+      documento_dominio,
+      conta_contabil_dominio
+    } = divergenciaData;
+
+    const sql = `
+      INSERT INTO divergencias (
+        comparacao_id, tipo, descricao,
+        data_extrato, descricao_extrato, valor_extrato, documento_extrato, conta_contabil_extrato,
+        data_dominio, descricao_dominio, valor_dominio, documento_dominio, conta_contabil_dominio
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.run(sql, [
+      comparacao_id, tipo, descricao,
+      data_extrato, descricao_extrato, valor_extrato, documento_extrato, conta_contabil_extrato,
+      data_dominio, descricao_dominio, valor_dominio, documento_dominio, conta_contabil_dominio
+    ], function(err) {
+      if (err) {
+        console.error('❌ Erro ao criar divergência:', err.message);
+        reject(err);
+      } else {
+        resolve({ id: this.lastID, ...divergenciaData });
+      }
+    });
+  });
+}
+
+function getDivergenciasByComparacaoId(comparacaoId) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT * FROM divergencias WHERE comparacao_id = ? ORDER BY id`;
+    db.all(sql, [comparacaoId], (err, rows) => {
+      if (err) {
+        console.error('❌ Erro ao buscar divergências:', err.message);
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+function deleteDivergenciasByComparacaoId(comparacaoId) {
+  return new Promise((resolve, reject) => {
+    const sql = `DELETE FROM divergencias WHERE comparacao_id = ?`;
+    db.run(sql, [comparacaoId], function(err) {
+      if (err) {
+        console.error('❌ Erro ao deletar divergências:', err.message);
+        reject(err);
+      } else {
+        resolve({ deletedRows: this.changes });
+      }
+    });
+  });
+}
+
+// ============================================================================
+// FUNÇÕES RPA DOMÍNIO - Plano de Contas
+// ============================================================================
+
+function upsertChartOfAccount(accountData) {
+  return new Promise((resolve, reject) => {
+    const {
+      source = 'dominio',
+      account_code,
+      account_name,
+      account_level,
+      parent_code,
+      account_type,
+      nature,
+      is_active = true
+    } = accountData;
+
+    // Verifica se já existe
+    const checkSql = `SELECT id FROM chart_of_accounts WHERE source = ? AND account_code = ?`;
+    db.get(checkSql, [source, account_code], (err, existing) => {
+      if (err) {
+        console.error('❌ Erro ao verificar conta:', err.message);
+        return reject(err);
+      }
+
+      if (existing) {
+        // Update
+        const updateSql = `
+          UPDATE chart_of_accounts 
+          SET account_name = ?, account_level = ?, parent_code = ?, 
+              account_type = ?, nature = ?, is_active = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE source = ? AND account_code = ?
+        `;
+        db.run(updateSql, [
+          account_name, account_level, parent_code, account_type, nature, is_active,
+          source, account_code
+        ], function(updateErr) {
+          if (updateErr) {
+            console.error('❌ Erro ao atualizar conta:', updateErr.message);
+            reject(updateErr);
+          } else {
+            resolve({ id: existing.id, ...accountData, updated: true });
+          }
+        });
+      } else {
+        // Insert
+        const insertSql = `
+          INSERT INTO chart_of_accounts 
+          (source, account_code, account_name, account_level, parent_code, account_type, nature, is_active)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `;
+        db.run(insertSql, [
+          source, account_code, account_name, account_level, parent_code, account_type, nature, is_active
+        ], function(insertErr) {
+          if (insertErr) {
+            console.error('❌ Erro ao inserir conta:', insertErr.message);
+            reject(insertErr);
+          } else {
+            resolve({ id: this.lastID, ...accountData, updated: false });
+          }
+        });
+      }
+    });
+  });
+}
+
+function getChartOfAccounts(source = null) {
+  return new Promise((resolve, reject) => {
+    let sql, params;
+    if (source) {
+      sql = `SELECT * FROM chart_of_accounts WHERE source = ? ORDER BY account_code`;
+      params = [source];
+    } else {
+      sql = `SELECT * FROM chart_of_accounts ORDER BY source, account_code`;
+      params = [];
+    }
+
+    db.all(sql, params, (err, rows) => {
+      if (err) {
+        console.error('❌ Erro ao buscar plano de contas:', err.message);
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+function deleteChartOfAccountsBySource(source) {
+  return new Promise((resolve, reject) => {
+    const sql = `DELETE FROM chart_of_accounts WHERE source = ?`;
+    db.run(sql, [source], function(err) {
+      if (err) {
+        console.error('❌ Erro ao deletar plano de contas:', err.message);
+        reject(err);
+      } else {
+        resolve({ deletedRows: this.changes });
+      }
+    });
+  });
+}
+
+// ============================================================================
+// FUNÇÕES RPA DOMÍNIO - Validação de Contas
+// ============================================================================
+
+function createAccountValidationResult(resultData) {
+  return new Promise((resolve, reject) => {
+    const {
+      comparacao_id,
+      lancamento_key,
+      account_code,
+      status,
+      reason_code,
+      message,
+      expected = null,
+      meta = null
+    } = resultData;
+
+    const sql = `
+      INSERT INTO account_validation_results 
+      (comparacao_id, lancamento_key, account_code, status, reason_code, message, expected, meta)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const expectedJson = expected ? JSON.stringify(expected) : null;
+    const metaJson = meta ? JSON.stringify(meta) : null;
+
+    db.run(sql, [
+      comparacao_id, lancamento_key, account_code, status, reason_code, message, expectedJson, metaJson
+    ], function(err) {
+      if (err) {
+        console.error('❌ Erro ao criar resultado de validação:', err.message);
+        reject(err);
+      } else {
+        resolve({ id: this.lastID, ...resultData });
+      }
+    });
+  });
+}
+
+function getAccountValidationResultsByComparacaoId(comparacaoId) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT * FROM account_validation_results WHERE comparacao_id = ?`;
+    db.all(sql, [comparacaoId], (err, rows) => {
+      if (err) {
+        console.error('❌ Erro ao buscar resultados de validação:', err.message);
+        reject(err);
+      } else {
+        // Parse JSON fields
+        rows.forEach(row => {
+          if (row.expected) {
+            try {
+              row.expected = JSON.parse(row.expected);
+            } catch (e) {
+              row.expected = null;
+            }
+          }
+          if (row.meta) {
+            try {
+              row.meta = JSON.parse(row.meta);
+            } catch (e) {
+              row.meta = null;
+            }
+          }
+        });
+        resolve(rows);
+      }
+    });
+  });
+}
+
+function deleteAccountValidationResultsByComparacaoId(comparacaoId) {
+  return new Promise((resolve, reject) => {
+    const sql = `DELETE FROM account_validation_results WHERE comparacao_id = ?`;
+    db.run(sql, [comparacaoId], function(err) {
+      if (err) {
+        console.error('❌ Erro ao deletar resultados de validação:', err.message);
+        reject(err);
+      } else {
+        resolve({ deletedRows: this.changes });
+      }
+    });
+  });
+}
+
 module.exports = {
     db,
-    dbPath,          // <--- opcional
+    dbPath,
     uploadsDir,
     insertFile,
     getFilesByTaskId,
@@ -778,6 +1335,24 @@ module.exports = {
     checkTaskDependencies,
     insertActivityLog,
     getActivityLog: getActivityLogs,
-    checkTaskExists
+    checkTaskExists,
+    // RPA Domínio - Comparações
+    createComparacao,
+    getComparacaoById,
+    listComparacoes,
+    updateComparacaoStatus,
+    deleteComparacao,
+    // RPA Domínio - Divergências
+    createDivergencia,
+    getDivergenciasByComparacaoId,
+    deleteDivergenciasByComparacaoId,
+    // RPA Domínio - Plano de Contas
+    upsertChartOfAccount,
+    getChartOfAccounts,
+    deleteChartOfAccountsBySource,
+    // RPA Domínio - Validação
+    createAccountValidationResult,
+    getAccountValidationResultsByComparacaoId,
+    deleteAccountValidationResultsByComparacaoId
   };
   
