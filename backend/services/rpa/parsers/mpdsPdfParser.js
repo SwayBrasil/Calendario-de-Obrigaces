@@ -333,6 +333,20 @@ function parseMpdsPdf(filePath, strict = false) {
       .catch((error) => {
         clearTimeout(timeout);
         console.error(`Erro ao processar PDF: ${error.message}`);
+
+        const rawMessage = (error && error.message ? error.message : '').toLowerCase();
+        const rawDetails = (error && error.details ? error.details : '').toLowerCase();
+        const combined = `${rawMessage} ${rawDetails}`;
+
+        // Mensagens conhecidas do pdf-parse/pdf.js para PDFs corrompidos ou não suportados
+        if (combined.includes('bad xref entry') || combined.includes('invalid pdf') || combined.includes('formaterror')) {
+          return reject(
+            new Error(
+              'PDF inválido ou corrompido. Baixe novamente o extrato ou exporte em CSV/OFX (PDF precisa ter texto selecionável).'
+            )
+          );
+        }
+
         reject(error);
       });
   });
