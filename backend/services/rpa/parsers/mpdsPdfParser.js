@@ -18,22 +18,35 @@ function parseValor(valorStr) {
   valor = valor.replace(/R\$\s*/g, '');
   valor = valor.trim();
 
-  // Detecta sinal negativo
+  // Detecta sinal negativo (D = Débito, C = Crédito)
   let negativo = false;
-  if (valor.endsWith('-') || valor.endsWith('D') || valor.endsWith('d')) {
+  const valorUpper = valor.toUpperCase();
+  if (valorUpper.endsWith('D') || valorUpper.endsWith('DÉBITO')) {
     negativo = true;
-    valor = valor.slice(0, -1).trim();
-  } else if (valor.startsWith('-')) {
+    valor = valor.replace(/\s*[Dd](ébito)?\s*$/i, '').trim();
+  } else if (valorUpper.endsWith('-') || valor.startsWith('-')) {
     negativo = true;
-    valor = valor.substring(1).trim();
+    valor = valor.replace(/^-+|-+$/g, '').trim();
+  } else if (valorUpper.endsWith('C') || valorUpper.endsWith('CRÉDITO')) {
+    // Crédito é positivo (não precisa fazer nada)
+    valor = valor.replace(/\s*[Cc](rédito)?\s*$/i, '').trim();
   }
 
   // Remove pontos (milhares) e substitui vírgula por ponto (decimal)
-  valor = valor.replace(/\./g, '').replace(',', '.');
+  // Mas preserva se houver múltiplas vírgulas (formato inválido)
+  valor = valor.replace(/\./g, '');
+  
+  // Se tem vírgula, assume que é decimal brasileiro
+  if (valor.includes(',')) {
+    valor = valor.replace(',', '.');
+  }
 
   try {
     const num = parseFloat(valor);
-    return negativo ? -num : num;
+    if (isNaN(num)) {
+      return 0.0;
+    }
+    return negativo ? -Math.abs(num) : Math.abs(num);
   } catch (e) {
     console.warn(`Não foi possível converter valor: ${valorStr}`);
     return 0.0;
@@ -213,27 +226,36 @@ function parseSicoob(texto) {
   // Infere ano do período
   const anoInferido = inferirAnoDoPeriodo(texto);
 
-  // Padrão Sicoob: DD/MM Descrição Valor (ano pode estar implícito)
-  // Formato típico: "16/10 Transferência enviada 1.234,56"
-  const padrao = /(\d{2})\/(\d{2})(?:\/(\d{2,4}))?\s+(.+?)\s+([\d.,-]+)/g;
+  // Normaliza quebras de linha e espaços múltiplos
+  const textoNormalizado = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\s+/g, ' ');
 
+  // Padrão 1: DD/MM Descrição Valor (formato mais comum)
+  // Ex: "01/03 Transferência 1.234,56" ou "01/03/2025 Transferência 1.234,56"
+  const padrao1 = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+([^0-9]+?)\s+([R$]?\s*[\d.,-]+(?:\s*[DC])?)/gi;
+
+  // Padrão 2: Valor antes da data (formato alternativo)
+  // Ex: "1.234,56 01/03 Transferência"
+  const padrao2 = /([R$]?\s*[\d.,-]+(?:\s*[DC])?)\s+(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+([^0-9]+?)(?:\s|$)/gi;
+
+  // Padrão 3: DD/MM Valor Descrição (formato com valor no meio)
+  // Ex: "01/03 1.234,56 Transferência"
+  const padrao3 = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+([R$]?\s*[\d.,-]+(?:\s*[DC])?)\s+([^0-9]+?)(?:\s|$)/gi;
+
+  const seen = new Set(); // Evita duplicatas
+
+  // Tenta padrão 1
   let match;
-  while ((match = padrao.exec(texto)) !== null) {
+  while ((match = padrao1.exec(textoNormalizado)) !== null) {
     try {
       const [, dia, mes, anoStr, desc, valorStr] = match;
       let ano = anoStr ? parseInt(anoStr, 10) : null;
 
-      // Se ano tem 2 dígitos, converte para 4
       if (ano && ano < 100) {
         ano = 2000 + ano;
       }
-
-      // Se não tem ano, usa o ano inferido do período
       if (!ano && anoInferido) {
         ano = anoInferido;
       }
-
-      // Se ainda não tem ano, usa ano atual
       if (!ano) {
         ano = new Date().getFullYear();
       }
@@ -249,9 +271,11 @@ function parseSicoob(texto) {
         continue;
       }
 
-      // Trata valores isolados antes da data (formato Sicoob específico)
-      // Às vezes o valor aparece antes da data: "1.234,56 16/10 Transferência..."
-      // Este padrão já captura isso corretamente
+      const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
+      if (seen.has(chave)) {
+        continue;
+      }
+      seen.add(chave);
 
       lancamentos.push({
         data: format(data, 'yyyy-MM-dd'),
@@ -263,7 +287,103 @@ function parseSicoob(texto) {
         origem: 'mpds'
       });
     } catch (e) {
-      issues.push(`Erro ao processar linha Sicoob: ${e.message}`);
+      issues.push(`Erro ao processar linha Sicoob (padrão 1): ${e.message}`);
+      continue;
+    }
+  }
+
+  // Tenta padrão 2 (valor antes da data)
+  while ((match = padrao2.exec(textoNormalizado)) !== null) {
+    try {
+      const [, valorStr, dia, mes, anoStr, desc] = match;
+      let ano = anoStr ? parseInt(anoStr, 10) : null;
+
+      if (ano && ano < 100) {
+        ano = 2000 + ano;
+      }
+      if (!ano && anoInferido) {
+        ano = anoInferido;
+      }
+      if (!ano) {
+        ano = new Date().getFullYear();
+      }
+
+      const dataStr = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${ano}`;
+      const data = parseData(dataStr);
+      if (!data) {
+        continue;
+      }
+
+      const valor = parseValor(valorStr);
+      if (valor === 0.0) {
+        continue;
+      }
+
+      const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
+      if (seen.has(chave)) {
+        continue;
+      }
+      seen.add(chave);
+
+      lancamentos.push({
+        data: format(data, 'yyyy-MM-dd'),
+        descricao: normalizarDescricao(desc),
+        documento: null,
+        valor: valor,
+        saldo: null,
+        conta_contabil: null,
+        origem: 'mpds'
+      });
+    } catch (e) {
+      issues.push(`Erro ao processar linha Sicoob (padrão 2): ${e.message}`);
+      continue;
+    }
+  }
+
+  // Tenta padrão 3 (valor no meio)
+  while ((match = padrao3.exec(textoNormalizado)) !== null) {
+    try {
+      const [, dia, mes, anoStr, valorStr, desc] = match;
+      let ano = anoStr ? parseInt(anoStr, 10) : null;
+
+      if (ano && ano < 100) {
+        ano = 2000 + ano;
+      }
+      if (!ano && anoInferido) {
+        ano = anoInferido;
+      }
+      if (!ano) {
+        ano = new Date().getFullYear();
+      }
+
+      const dataStr = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${ano}`;
+      const data = parseData(dataStr);
+      if (!data) {
+        continue;
+      }
+
+      const valor = parseValor(valorStr);
+      if (valor === 0.0) {
+        continue;
+      }
+
+      const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
+      if (seen.has(chave)) {
+        continue;
+      }
+      seen.add(chave);
+
+      lancamentos.push({
+        data: format(data, 'yyyy-MM-dd'),
+        descricao: normalizarDescricao(desc),
+        documento: null,
+        valor: valor,
+        saldo: null,
+        conta_contabil: null,
+        origem: 'mpds'
+      });
+    } catch (e) {
+      issues.push(`Erro ao processar linha Sicoob (padrão 3): ${e.message}`);
       continue;
     }
   }
