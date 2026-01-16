@@ -393,8 +393,41 @@ function parseSicoob(texto) {
   }
 
   // Padrão 4: Processa linha por linha (mais genérico)
-  // Busca qualquer linha que tenha data e valor monetário válido
+  // Só processa linhas que não foram capturadas pelos padrões anteriores
+  // Marca linhas já processadas pelos padrões anteriores
+  const linhasProcessadas = new Set();
+  
+  // Marca linhas que já foram processadas pelos padrões 1, 2 e 3
+  [...textoNormalizado.matchAll(padrao1)].forEach(m => {
+    const linhaOriginal = linhas.find(l => l.includes(m[0]));
+    if (linhaOriginal) linhasProcessadas.add(linhaOriginal);
+  });
+  [...textoNormalizado.matchAll(padrao2)].forEach(m => {
+    const linhaOriginal = linhas.find(l => l.includes(m[0]));
+    if (linhaOriginal) linhasProcessadas.add(linhaOriginal);
+  });
+  [...textoNormalizado.matchAll(padrao3)].forEach(m => {
+    const linhaOriginal = linhas.find(l => l.includes(m[0]));
+    if (linhaOriginal) linhasProcessadas.add(linhaOriginal);
+  });
+  
   linhas.forEach((linha, idx) => {
+    // Pula se já foi processada
+    if (linhasProcessadas.has(linha)) return;
+    
+    // Pula linhas muito curtas (provavelmente não são lançamentos)
+    if (linha.length < 10) return;
+    
+    // Pula linhas que são claramente cabeçalhos ou rodapés
+    const linhaUpper = linha.toUpperCase();
+    if (linhaUpper.includes('PERÍODO') || linhaUpper.includes('SALDO') || 
+        linhaUpper.includes('TOTAL') || linhaUpper.includes('DATA') ||
+        linhaUpper.includes('DESCRIÇÃO') || linhaUpper.includes('VALOR') ||
+        linhaUpper.includes('SICOOB') || linhaUpper.includes('COOPERATIVAS') ||
+        linhaUpper.includes('CONTA CORRENTE') || linhaUpper.includes('AGÊNCIA') ||
+        linhaUpper.includes('TITULAR')) {
+      return;
+    }
     // Busca data no formato DD/MM ou DD/MM/YYYY
     const dataMatch = linha.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
     if (!dataMatch) return;
@@ -434,6 +467,13 @@ function parseSicoob(texto) {
         if (num >= 1 && num <= 31 && !candidate.includes(',')) continue;
         // Ignora anos
         if (num >= 2020 && num <= 2030) continue;
+        // Ignora números que parecem contas bancárias (5 dígitos sem vírgula: 11111, 12345, 33333)
+        if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
+          // Mas permite se tiver vírgula (pode ser valor grande)
+          continue;
+        }
+        // Ignora números muito grandes sem vírgula que não são valores monetários típicos
+        if (num >= 100000 && !candidate.includes(',')) continue;
         
         // Prefere valores com vírgula e 2 casas decimais
         const hasComma = candidate.includes(',');
@@ -512,13 +552,17 @@ function parseSicoob(texto) {
         // Remove o valor principal
         desc = desc.substring(0, valorIndex) + ' ' + desc.substring(valorIndex + valorFullMatch.length);
         
-        // Remove valores colados no final da descrição (padrões como "1.500", "300", "25,0")
-        // Remove números com ponto de milhar colados no final
-        desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?$/g, '').trim();
-        // Remove números simples colados no final (mas preserva números que fazem parte da descrição como "12345")
-        desc = desc.replace(/\s+\d{1,4}(?:,\d+)?$/g, '').trim();
-        // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
-        desc = desc.replace(/,\d+$/g, '').trim();
+      // Remove valores colados no final da descrição (padrões como "1.500", "300", "25,0")
+      // Remove números com ponto de milhar colados no final
+      desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?$/g, '').trim();
+      // Remove números simples colados no final (mas preserva números que fazem parte da descrição como "12345")
+      desc = desc.replace(/\s+\d{1,4}(?:,\d+)?$/g, '').trim();
+      // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
+      desc = desc.replace(/,\d+$/g, '').trim();
+      // Remove valores colados no meio (ex: "ABC 5.000" -> "ABC")
+      desc = desc.replace(/\s+\d{1,3}(?:\.\d{3})*(?:,\d{2})?\s+/g, ' ').trim();
+      // Remove "D" ou "C" soltos no final (indicadores de débito/crédito)
+      desc = desc.replace(/\s+[DC]\s*$/gi, '').trim();
       }
       
       // Remove valores que possam ter ficado colados no meio (padrões como "ABC1.500" -> "ABC")
@@ -535,9 +579,13 @@ function parseSicoob(texto) {
         desc = 'Lançamento bancário';
       }
 
-      const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
+      // Chave mais específica para evitar duplicatas
+      const descNormalizada = normalizarDescricao(desc).substring(0, 50).toUpperCase();
+      const valorArredondado = Math.round(valor * 100);
+      const chave = `${dataStr}|${descNormalizada}|${valorArredondado}`;
+      
       if (seen.has(chave)) {
-        return;
+        return; // Já processado
       }
       seen.add(chave);
 
