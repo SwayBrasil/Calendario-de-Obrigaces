@@ -393,19 +393,62 @@ function parseSicoob(texto) {
   }
 
   // Padrão 4: Processa linha por linha (mais genérico)
-  // Busca qualquer linha que tenha data e valor
+  // Busca qualquer linha que tenha data e valor monetário válido
   linhas.forEach((linha, idx) => {
     // Busca data no formato DD/MM ou DD/MM/YYYY
     const dataMatch = linha.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
     if (!dataMatch) return;
 
-    // Busca valor (número com vírgula ou ponto)
-    const valorMatch = linha.match(/([R$]?\s*[\d.,-]+(?:\s*[DC])?)/);
-    if (!valorMatch) return;
+    // Busca valor monetário válido (formato brasileiro: 1.234,56 ou 1234,56)
+    // Ignora números que são parte da data (1-31) ou anos (2024, 2025)
+    // Procura por padrões como: R$ 1.234,56 ou 1.234,56 ou 1234,56
+    const valorPatterns = [
+      /R\$\s*(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)/,  // R$ 1.234,56
+      /(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s*[DC]?/,  // 1.234,56 ou 1.234,56 D
+      /(\d+,\d{2})/,  // 1234,56 (sem ponto de milhar)
+    ];
+
+    let valorStr = null;
+    let valorMatch = null;
+    let valorIndex = -1;
+
+    for (const pattern of valorPatterns) {
+      const matches = linha.match(pattern);
+      if (matches) {
+        const candidate = matches[1] || matches[0];
+        // Ignora se for parte da data (1-31) ou ano (2020-2030)
+        const numStr = candidate.replace(/\./g, '').replace(',', '.');
+        const num = parseFloat(numStr);
+        if (isNaN(num)) continue;
+        
+        // Ignora dias do mês
+        if (num >= 1 && num <= 31 && !candidate.includes(',')) continue;
+        // Ignora anos
+        if (num >= 2020 && num <= 2030) continue;
+        
+        // Se tem vírgula e pelo menos 2 casas decimais, é provavelmente um valor
+        if (candidate.includes(',') && candidate.split(',')[1]?.length >= 2) {
+          valorStr = candidate;
+          valorMatch = matches;
+          valorIndex = linha.indexOf(matches[0]);
+          break;
+        }
+        // Se é um número grande (> 100), pode ser valor
+        if (num > 100) {
+          // Mas prefere valores com vírgula
+          if (!valorStr || !valorStr.includes(',')) {
+            valorStr = candidate;
+            valorMatch = matches;
+            valorIndex = linha.indexOf(matches[0]);
+          }
+        }
+      }
+    }
+
+    if (!valorStr || !valorMatch) return;
 
     try {
       const [, dia, mes, anoStr] = dataMatch;
-      const valorStr = valorMatch[1];
 
       let ano = anoStr ? parseInt(anoStr, 10) : null;
       if (ano && ano < 100) {
@@ -425,18 +468,25 @@ function parseSicoob(texto) {
       }
 
       const valor = parseValor(valorStr);
-      if (valor === 0.0) {
+      if (valor === 0.0 || Math.abs(valor) < 0.01) {
         return;
       }
 
-      // Extrai descrição (tudo entre data e valor, ou após valor)
+      // Extrai descrição: remove data e valor, mantém o resto
       let desc = linha;
-      // Remove data
-      desc = desc.replace(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g, '').trim();
-      // Remove valor
-      desc = desc.replace(/[R$]?\s*[\d.,-]+(?:\s*[DC])?/g, '').trim();
-      // Remove caracteres especiais no início/fim
-      desc = desc.replace(/^[^\w]+|[^\w]+$/g, '').trim();
+      // Remove a data específica encontrada
+      const dataIndex = linha.indexOf(dataMatch[0]);
+      if (dataIndex >= 0) {
+        desc = desc.substring(0, dataIndex) + ' ' + desc.substring(dataIndex + dataMatch[0].length);
+      }
+      // Remove o valor encontrado
+      if (valorIndex >= 0) {
+        const valorFullMatch = valorMatch[0];
+        desc = desc.substring(0, valorIndex) + ' ' + desc.substring(valorIndex + valorFullMatch.length);
+      }
+      // Limpa espaços múltiplos e caracteres especiais
+      desc = desc.replace(/\s+/g, ' ').trim();
+      desc = desc.replace(/^[^\w\s]+|[^\w\s]+$/g, '').trim();
 
       if (!desc || desc.length < 3) {
         desc = 'Lançamento bancário';
