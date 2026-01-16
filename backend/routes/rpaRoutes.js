@@ -46,6 +46,7 @@ const {
   listComparacoes,
   deleteComparacao,
   getDivergenciasByComparacaoId,
+  getLancamentosConferidosByComparacaoId,
   getAccountValidationResultsByComparacaoId,
   upsertChartOfAccount,
   getChartOfAccounts,
@@ -188,6 +189,9 @@ router.get('/comparacoes/:id', authenticateToken, async (req, res) => {
     // Busca divergências
     const divergencias = await getDivergenciasByComparacaoId(id);
 
+    // Busca lançamentos conferidos
+    const conferidos = await getLancamentosConferidosByComparacaoId(id);
+
     // Busca resultados de validação
     const validationResults = await getAccountValidationResultsByComparacaoId(id);
 
@@ -202,6 +206,7 @@ router.get('/comparacoes/:id', authenticateToken, async (req, res) => {
     res.json({
       ...comparacao,
       divergencias,
+      conferidos,
       validation_results: validationResults,
       validation_summary: validationSummary
     });

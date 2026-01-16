@@ -492,6 +492,74 @@ const ComparadorExtratos = () => {
                   </tbody>
                 </table>
               )}
+
+              {/* Seção de Lançamentos Conferidos */}
+              <div style={{ marginTop: '2rem', paddingTop: '2rem', borderTop: '2px solid #e0e0e0' }}>
+                <h3 style={{ marginBottom: '1rem' }}>
+                  ✅ Lançamentos Conferidos ({comparacaoSelecionada?.conferidos?.length || 0})
+                </h3>
+                {(!comparacaoSelecionada?.conferidos || comparacaoSelecionada.conferidos.length === 0) ? (
+                  <p>Nenhum lançamento conferido ainda.</p>
+                ) : (
+                  <table className="table divergencias-table">
+                    <thead>
+                      <tr>
+                        <th>Extrato bancário</th>
+                        <th>Otimiza (TXT)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {comparacaoSelecionada.conferidos.map((c) => (
+                        <tr key={c.id} style={{ backgroundColor: '#f0f9ff' }}>
+                          <td>
+                            <div className="cell-block">
+                              {c.data_extrato && (
+                                <div><strong>Data:</strong> {formatDate(c.data_extrato)}</div>
+                              )}
+                              {c.valor_extrato != null && (
+                                <div>
+                                  <strong>Valor:</strong>{' '}
+                                  {c.valor_extrato.toLocaleString('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL',
+                                  })}
+                                </div>
+                              )}
+                              {c.documento_extrato && (
+                                <div><strong>Doc:</strong> {c.documento_extrato}</div>
+                              )}
+                              {c.descricao_extrato && <div>{c.descricao_extrato}</div>}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="cell-block">
+                              {c.data_dominio && (
+                                <div><strong>Data:</strong> {formatDate(c.data_dominio)}</div>
+                              )}
+                              {c.valor_dominio != null && (
+                                <div>
+                                  <strong>Valor:</strong>{' '}
+                                  {c.valor_dominio.toLocaleString('pt-BR', {
+                                    style: 'currency',
+                                    currency: 'BRL',
+                                  })}
+                                </div>
+                              )}
+                              {c.documento_dominio && (
+                                <div><strong>Doc:</strong> {c.documento_dominio}</div>
+                              )}
+                              {c.descricao_dominio && <div>{c.descricao_dominio}</div>}
+                              {c.conta_contabil_dominio && (
+                                <div><strong>Conta:</strong> {c.conta_contabil_dominio}</div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </>
           )}
         </section>

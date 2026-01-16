@@ -14,6 +14,8 @@ const {
   updateComparacaoStatus,
   createDivergencia,
   deleteDivergenciasByComparacaoId,
+  createLancamentoConferido,
+  deleteLancamentosConferidosByComparacaoId,
   deleteAccountValidationResultsByComparacaoId
 } = require('../database');
 
@@ -189,7 +191,7 @@ async function processarComparacao(comparacaoId, db) {
 
     // 3. Executa comparação
     console.log(`[WORKER] Executando comparação: ${lancamentosExtrato.length} vs ${lancamentosOtimiza.length}`);
-    const divergencias = compareBankVsTxt(
+    const resultado = compareBankVsTxt(
       lancamentosExtrato,
       lancamentosOtimiza,
       2, // dateWindowDays
@@ -198,10 +200,14 @@ async function processarComparacao(comparacaoId, db) {
       true // allowManyToOne
     );
 
-    console.log(`[WORKER] Comparação concluída: ${divergencias.length} divergências encontradas`);
+    const divergencias = resultado.divergencias || [];
+    const conferidos = resultado.conferidos || [];
 
-    // 4. Deleta divergências antigas (se houver)
+    console.log(`[WORKER] Comparação concluída: ${divergencias.length} divergências encontradas, ${conferidos.length} lançamentos conferidos`);
+
+    // 4. Deleta divergências e conferidos antigos (se houver)
     await deleteDivergenciasByComparacaoId(comparacaoId);
+    await deleteLancamentosConferidosByComparacaoId(comparacaoId);
 
     // 5. Salva divergências no banco
     for (const div of divergencias) {
@@ -219,6 +225,23 @@ async function processarComparacao(comparacaoId, db) {
         valor_dominio: div.valor_dominio,
         documento_dominio: div.documento_dominio,
         conta_contabil_dominio: div.conta_contabil_dominio
+      });
+    }
+
+    // 6. Salva lançamentos conferidos no banco
+    for (const conf of conferidos) {
+      await createLancamentoConferido({
+        comparacao_id: comparacaoId,
+        data_extrato: conf.data_extrato,
+        descricao_extrato: conf.descricao_extrato,
+        valor_extrato: conf.valor_extrato,
+        documento_extrato: conf.documento_extrato,
+        conta_contabil_extrato: conf.conta_contabil_extrato,
+        data_dominio: conf.data_dominio,
+        descricao_dominio: conf.descricao_dominio,
+        valor_dominio: conf.valor_dominio,
+        documento_dominio: conf.documento_dominio,
+        conta_contabil_dominio: conf.conta_contabil_dominio
       });
     }
 

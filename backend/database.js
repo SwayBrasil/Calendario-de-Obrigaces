@@ -195,6 +195,28 @@ function initializeDatabase() {
       else console.log('✅ Tabela divergencias criada/verificada com sucesso!');
     });
 
+    // 7.5) lancamentos_conferidos (RPA Domínio)
+    db.run(`
+      CREATE TABLE IF NOT EXISTS lancamentos_conferidos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        comparacao_id INTEGER NOT NULL,
+        data_extrato DATE,
+        descricao_extrato VARCHAR(255),
+        valor_extrato REAL,
+        documento_extrato VARCHAR(100),
+        conta_contabil_extrato VARCHAR(100),
+        data_dominio DATE,
+        descricao_dominio VARCHAR(255),
+        valor_dominio REAL,
+        documento_dominio VARCHAR(100),
+        conta_contabil_dominio VARCHAR(100),
+        FOREIGN KEY (comparacao_id) REFERENCES comparacoes (id) ON DELETE CASCADE
+      )
+    `, (err) => {
+      if (err) console.error('❌ Erro ao criar tabela lancamentos_conferidos:', err.message);
+      else console.log('✅ Tabela lancamentos_conferidos criada/verificada com sucesso!');
+    });
+
     // 8) chart_of_accounts (RPA Domínio)
     db.run(`
       CREATE TABLE IF NOT EXISTS chart_of_accounts (
@@ -1109,6 +1131,78 @@ function getDivergenciasByComparacaoId(comparacaoId) {
   });
 }
 
+// ============================================================================
+// FUNÇÕES RPA DOMÍNIO - Lançamentos Conferidos
+// ============================================================================
+
+function createLancamentoConferido(conferidoData) {
+  return new Promise((resolve, reject) => {
+    const {
+      comparacao_id,
+      data_extrato,
+      descricao_extrato,
+      valor_extrato,
+      documento_extrato,
+      conta_contabil_extrato,
+      data_dominio,
+      descricao_dominio,
+      valor_dominio,
+      documento_dominio,
+      conta_contabil_dominio
+    } = conferidoData;
+
+    const sql = `
+      INSERT INTO lancamentos_conferidos (
+        comparacao_id,
+        data_extrato, descricao_extrato, valor_extrato, documento_extrato, conta_contabil_extrato,
+        data_dominio, descricao_dominio, valor_dominio, documento_dominio, conta_contabil_dominio
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    db.run(sql, [
+      comparacao_id,
+      data_extrato, descricao_extrato, valor_extrato, documento_extrato, conta_contabil_extrato,
+      data_dominio, descricao_dominio, valor_dominio, documento_dominio, conta_contabil_dominio
+    ], function(err) {
+      if (err) {
+        console.error('❌ Erro ao criar lançamento conferido:', err.message);
+        reject(err);
+      } else {
+        resolve({ id: this.lastID, ...conferidoData });
+      }
+    });
+  });
+}
+
+function getLancamentosConferidosByComparacaoId(comparacaoId) {
+  return new Promise((resolve, reject) => {
+    const sql = `SELECT * FROM lancamentos_conferidos WHERE comparacao_id = ? ORDER BY data_extrato, id`;
+    db.all(sql, [comparacaoId], (err, rows) => {
+      if (err) {
+        console.error('❌ Erro ao buscar lançamentos conferidos:', err.message);
+        reject(err);
+      } else {
+        resolve(rows);
+      }
+    });
+  });
+}
+
+function deleteLancamentosConferidosByComparacaoId(comparacaoId) {
+  return new Promise((resolve, reject) => {
+    const sql = `DELETE FROM lancamentos_conferidos WHERE comparacao_id = ?`;
+    db.run(sql, [comparacaoId], function(err) {
+      if (err) {
+        console.error('❌ Erro ao deletar lançamentos conferidos:', err.message);
+        reject(err);
+      } else {
+        resolve({ deletedRows: this.changes });
+      }
+    });
+  });
+}
+
 function deleteDivergenciasByComparacaoId(comparacaoId) {
   return new Promise((resolve, reject) => {
     const sql = `DELETE FROM divergencias WHERE comparacao_id = ?`;
@@ -1346,6 +1440,10 @@ module.exports = {
     createDivergencia,
     getDivergenciasByComparacaoId,
     deleteDivergenciasByComparacaoId,
+    // RPA Domínio - Lançamentos Conferidos
+    createLancamentoConferido,
+    getLancamentosConferidosByComparacaoId,
+    deleteLancamentosConferidosByComparacaoId,
     // RPA Domínio - Plano de Contas
     upsertChartOfAccount,
     getChartOfAccounts,

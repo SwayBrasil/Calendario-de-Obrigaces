@@ -505,6 +505,7 @@ function compareBankVsTxt(
   const divergencias = [];
   const casadosBank = new Set();
   const casadosTxt = new Set();
+  const matches = new Map(); // Mapeia idxBank -> idxTxt para rastrear matches
 
   // Função melhorada de similaridade (considera palavras e substrings)
   function similarity(str1, str2) {
@@ -630,6 +631,7 @@ function compareBankVsTxt(
     if (melhorMatch) {
       casadosBank.add(idxBank);
       casadosTxt.add(melhorMatch.idxTxt);
+      matches.set(idxBank, melhorMatch.idxTxt); // Rastreia o match
     } else {
       // Não encontrou match - cria divergência
       divergencias.push({
@@ -679,7 +681,26 @@ function compareBankVsTxt(
     }
   });
 
-  return divergencias;
+  // Coleta lançamentos conferidos (casados)
+  const conferidos = [];
+  matches.forEach((idxTxt, idxBank) => {
+    const movBank = bankMovements[idxBank];
+    const movTxt = txtMovements[idxTxt];
+    conferidos.push({
+      data_extrato: movBank.data,
+      descricao_extrato: movBank.descricao,
+      valor_extrato: movBank.valor,
+      documento_extrato: movBank.documento,
+      conta_contabil_extrato: movBank.conta_contabil,
+      data_dominio: movTxt.data,
+      descricao_dominio: movTxt.descricao,
+      valor_dominio: movTxt.valor,
+      documento_dominio: movTxt.documento,
+      conta_contabil_dominio: movTxt.conta_contabil
+    });
+  });
+
+  return { divergencias, conferidos };
 }
 
 module.exports = {
