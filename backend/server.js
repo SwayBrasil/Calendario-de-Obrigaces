@@ -1946,7 +1946,6 @@ app.post('/api/agenda-tributaria/criar-ano-api', authenticateToken, async (req, 
 });
 
 // Rotas RPA Domínio
-const rpaRoutes = require('./routes/rpaRoutes');
 app.use('/api', rpaRoutes);
 
 // servir build do frontend (Vite) pelo Node
