@@ -470,10 +470,12 @@ function parseSicoob(texto) {
         // Ignora números que parecem contas bancárias (5 dígitos sem vírgula)
         if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
           const linhaUpper = linha.toUpperCase();
+          const linhaCompleta = linhaUpper;
           const beforeValue = linhaUpper.substring(0, matchIndex);
+          const afterValue = linhaUpper.substring(matchIndex + fullMatch.length);
           
-          // Ignora se aparecer após palavras relacionadas a conta bancária
-          if (beforeValue.includes('CONTA') || beforeValue.includes('AGENCIA') || beforeValue.includes('AGÊNCIA')) {
+          // Ignora se a linha contém "CONTA" em qualquer lugar
+          if (linhaCompleta.includes('CONTA') || linhaCompleta.includes('AGENCIA') || linhaCompleta.includes('AGÊNCIA')) {
             continue;
           }
           
@@ -484,12 +486,22 @@ function parseSicoob(texto) {
           }
           
           // Ignora se aparecer em contexto de TED/TED RECEBIDA CONTA / TED ENVIADA PARA CONTA
-          if (beforeValue.includes('TED') && (beforeValue.includes('CONTA') || beforeValue.match(/TED\s+(RECEBIDA|ENVIADA)\s+PARA\s+CONTA/))) {
+          if (linhaCompleta.includes('TED') && linhaCompleta.includes('CONTA')) {
             continue;
           }
           
-          // Ignora se aparecer após "BOLETO" seguido de número (ex: "BOLETO 12345")
-          if (beforeValue.match(/BOLETO\s+\d+$/)) {
+          // Ignora se a linha contém "BOLETO" seguido de número
+          if (linhaCompleta.match(/BOLETO\s*\d{4,}/)) {
+            continue;
+          }
+          
+          // Ignora se aparecer após "TED" e antes de "CONTA" (ex: "TED 11111 CONTA")
+          if (beforeValue.includes('TED') && afterValue.includes('CONTA')) {
+            continue;
+          }
+          
+          // Ignora se aparecer após "PARA CONTA" ou "DE CONTA"
+          if (beforeValue.includes('PARA CONTA') || beforeValue.includes('DE CONTA') || beforeValue.includes('RECEBIDA CONTA') || beforeValue.includes('ENVIADA CONTA')) {
             continue;
           }
         }
@@ -517,6 +529,15 @@ function parseSicoob(texto) {
           }
         } else if (num > 1000 && !hasComma) {
           // Número muito grande sem vírgula pode ser valor
+          // MAS: rejeita se for número de conta (5 dígitos) em contexto suspeito
+          const linhaUpper = linha.toUpperCase();
+          if (num >= 10000 && num < 100000) {
+            // É número de 5 dígitos - verifica contexto
+            if (linhaUpper.includes('CONTA') || linhaUpper.includes('BOLETO') || 
+                linhaUpper.match(/TED\s+\d{5}/) || linhaUpper.match(/BOLETO\s+\d{5}/)) {
+              continue; // Rejeita - é número de conta
+            }
+          }
           const score = 3 + positionScore;
           if (!bestMatch || score > bestMatch.score || (score === bestMatch.score && matchIndex > bestMatch.index)) {
             bestMatch = { candidate, match, index: matchIndex, fullMatch, score };
@@ -574,14 +595,28 @@ function parseSicoob(texto) {
         desc = desc.substring(0, valorIndex) + ' ' + desc.substring(valorIndex + valorFullMatch.length);
         
       // Remove valores colados no final da descrição (padrões como "1.500", "300", "25,0")
-      // Remove números com ponto de milhar colados no final
-      desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d+)?$/g, '').trim();
-      // Remove números simples colados no final (mas preserva números que fazem parte da descrição como "12345")
-      desc = desc.replace(/\s+\d{1,4}(?:,\d+)?$/g, '').trim();
+      // MAS preserva números de conta (5 dígitos com hífen ou sem, ex: "11111-2", "12345")
+      // Remove números com ponto de milhar colados no final (mas não números de conta)
+      desc = desc.replace(/\d{1,3}(?:\.\d{3})+(?:,\d{2})?$/g, '').trim();
+      // Remove números simples colados no final, mas preserva números de conta (5 dígitos)
+      // e números que fazem parte de descrições (ex: "BOLETO 12345", "CONTA 11111-2")
+      desc = desc.replace(/\s+(\d{1,4}|\d{6,})(?:,\d+)?$/g, '').trim();
       // Remove vírgulas soltas no final (ex: "MENSAL,0" -> "MENSAL")
       desc = desc.replace(/,\d+$/g, '').trim();
       // Remove valores colados no meio (ex: "ABC 5.000" -> "ABC")
-      desc = desc.replace(/\s+\d{1,3}(?:\.\d{3})*(?:,\d{2})?\s+/g, ' ').trim();
+      // MAS preserva números de conta (5 dígitos) que aparecem após palavras-chave
+      desc = desc.replace(/\s+(\d{1,3}(?:\.\d{3})*(?:,\d{2})?)\s+/g, (match, num) => {
+        // Se o número é 5 dígitos e aparece após "CONTA", "BOLETO", etc., preserva
+        const numSemPontos = num.replace(/\./g, '').replace(',', '');
+        if (numSemPontos.length === 5) {
+          const beforeMatch = desc.substring(0, desc.indexOf(match)).toUpperCase();
+          if (beforeMatch.includes('CONTA') || beforeMatch.includes('BOLETO') || 
+              beforeMatch.includes('TED') || beforeMatch.match(/NF\d*$/i)) {
+            return match; // Preserva número de conta
+          }
+        }
+        return ' '; // Remove valor monetário
+      }).trim();
       // Remove "D" ou "C" soltos no final (indicadores de débito/crédito)
       desc = desc.replace(/\s+[DC]\s*$/gi, '').trim();
       }
@@ -604,15 +639,25 @@ function parseSicoob(texto) {
       // Rejeita valores que são claramente números de conta (5 dígitos sem vírgula)
       const valorInteiro = Math.abs(valor);
       if (valorInteiro >= 10000 && valorInteiro < 100000 && !valorStr.includes(',')) {
-        // Verifica se a descrição menciona "CONTA" - confirma que é número de conta
         const descUpper = desc.toUpperCase();
-        if (descUpper.includes('CONTA') || descUpper.includes('AGENCIA') || descUpper.includes('AGÊNCIA')) {
+        const linhaUpper = linha.toUpperCase();
+        
+        // Verifica se a descrição ou linha menciona "CONTA", "BOLETO", etc.
+        if (descUpper.includes('CONTA') || descUpper.includes('AGENCIA') || descUpper.includes('AGÊNCIA') ||
+            linhaUpper.includes('CONTA') || linhaUpper.includes('BOLETO')) {
           return; // É número de conta, ignora
         }
+        
         // Se é número repetido (11111, 33333), também ignora
         const valorStrSemPontos = valorStr.replace(/\./g, '');
         if (/^(\d)\1{4,}$/.test(valorStrSemPontos)) {
           return; // Número repetido, provavelmente conta
+        }
+        
+        // Se a linha contém padrões como "TED 11111", "BOLETO 12345", etc.
+        if (linhaUpper.match(/TED\s+\d{5}/) || linhaUpper.match(/BOLETO\s+\d{5}/) ||
+            linhaUpper.match(/CONTA\s+\d{5}/) || linhaUpper.match(/\d{5}\s*[-]\s*\d/)) {
+          return; // É número de conta
         }
       }
 

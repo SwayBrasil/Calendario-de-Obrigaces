@@ -506,15 +506,46 @@ function compareBankVsTxt(
   const casadosBank = new Set();
   const casadosTxt = new Set();
 
-  // Função simples de similaridade (ratio de caracteres comuns)
+  // Função melhorada de similaridade (considera palavras e substrings)
   function similarity(str1, str2) {
     if (!str1 || !str2) {
       return 0.0;
     }
-    const str1Norm = normalizarDescricao(str1);
-    const str2Norm = normalizarDescricao(str2);
+    const str1Norm = normalizarDescricao(str1).trim();
+    const str2Norm = normalizarDescricao(str2).trim();
     
-    // Calcula similaridade simples (Jaccard-like)
+    // Se uma descrição contém a outra (ex: "PIX" está em "PIX RECEBIDO DE MARIA COSTA")
+    if (str1Norm.length > 0 && str2Norm.length > 0) {
+      if (str1Norm.includes(str2Norm) || str2Norm.includes(str1Norm)) {
+        // Se uma é substring da outra, retorna alta similaridade
+        const shorter = str1Norm.length < str2Norm.length ? str1Norm : str2Norm;
+        const longer = str1Norm.length >= str2Norm.length ? str1Norm : str2Norm;
+        // Similaridade baseada no tamanho da substring vs tamanho da string maior
+        return Math.max(0.7, shorter.length / longer.length);
+      }
+    }
+    
+    // Similaridade por palavras (divide em palavras e compara)
+    const words1 = str1Norm.split(/\s+/).filter(w => w.length > 2); // Ignora palavras muito curtas
+    const words2 = str2Norm.split(/\s+/).filter(w => w.length > 2);
+    
+    if (words1.length > 0 && words2.length > 0) {
+      const set1 = new Set(words1);
+      const set2 = new Set(words2);
+      const intersection = new Set([...set1].filter(x => set2.has(x)));
+      const union = new Set([...set1, ...set2]);
+      
+      if (union.size > 0) {
+        const wordSimilarity = intersection.size / union.size;
+        // Se há pelo menos uma palavra em comum e uma das descrições é curta, aumenta similaridade
+        if (intersection.size > 0 && (words1.length <= 2 || words2.length <= 2)) {
+          return Math.max(wordSimilarity, 0.6);
+        }
+        return wordSimilarity;
+      }
+    }
+    
+    // Fallback: similaridade por caracteres (Jaccard-like)
     const set1 = new Set(str1Norm.split(''));
     const set2 = new Set(str2Norm.split(''));
     const intersection = new Set([...set1].filter(x => set2.has(x)));
@@ -553,7 +584,14 @@ function compareBankVsTxt(
 
       // Calcula similaridade de descrição
       const sim = similarity(movBank.descricao, movTxt.descricao);
-      if (sim < minDescriptionSimilarity) {
+      
+      // Ajusta threshold de similaridade para descrições curtas
+      // Se uma das descrições é muito curta (<= 5 caracteres), reduz o threshold
+      const descBankShort = movBank.descricao && movBank.descricao.length <= 5;
+      const descTxtShort = movTxt.descricao && movTxt.descricao.length <= 5;
+      const adjustedThreshold = (descBankShort || descTxtShort) ? Math.min(0.4, minDescriptionSimilarity * 0.7) : minDescriptionSimilarity;
+      
+      if (sim < adjustedThreshold) {
         return;
       }
 
