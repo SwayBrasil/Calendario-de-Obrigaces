@@ -172,50 +172,77 @@ function parseOtimizaTxt(filePath, strict = false) {
               // Tenta detectar formato: pode ser Data|Descrição|... ou Campo|Data|...
               let dataStr = null;
               let descricao = null;
-              let idxInicio = 0;
+              let valorStr = null;
+              let valorIdx = null;
+              let accountCode = null;
+              let documento = null;
 
-              // Verifica se primeira parte é data
-              if (parseDataSafe(partes[0])) {
+              // Formato Otimiza padrão: Data|Descrição|Conta|Documento|Valor|Categoria|Tipo (7 campos)
+              if (partes.length === 7 && parseDataSafe(partes[0])) {
+                // Formato fixo Otimiza
                 dataStr = partes[0];
                 descricao = partes[1] || '';
-                idxInicio = 2;
-              } else if (partes.length > 1 && parseDataSafe(partes[1])) {
-                dataStr = partes[1];
-                descricao = partes[0] || '';
-                idxInicio = 2;
-              } else if (partes.length > 2 && parseDataSafe(partes[2])) {
-                dataStr = partes[2];
-                descricao = partes.slice(0, 2).filter(p => p).join(' ');
-                idxInicio = 3;
+                accountCode = partes[2] || null;
+                documento = partes[3] || null;
+                valorStr = partes[4] || null;
+                valorIdx = 4;
               } else {
-                // Fallback: usa primeira parte como data
-                dataStr = partes[0];
-                descricao = partes[1] || '';
-                idxInicio = 2;
+                // Formato variável - detecta dinamicamente
+                // Verifica se primeira parte é data
+                if (parseDataSafe(partes[0])) {
+                  dataStr = partes[0];
+                  descricao = partes[1] || '';
+                } else if (partes.length > 1 && parseDataSafe(partes[1])) {
+                  dataStr = partes[1];
+                  descricao = partes[0] || '';
+                } else if (partes.length > 2 && parseDataSafe(partes[2])) {
+                  dataStr = partes[2];
+                  descricao = partes.slice(0, 2).filter(p => p).join(' ');
+                } else {
+                  // Fallback: usa primeira parte como data
+                  dataStr = partes[0];
+                  descricao = partes[1] || '';
+                }
+
+                const idxInicio = parseDataSafe(partes[0]) ? 2 : (parseDataSafe(partes[1]) ? 2 : 3);
+
+                // Procura valor (formato numérico com vírgula ou ponto decimal)
+                // Ignora contas contábeis (formato X.X.X) e documentos alfanuméricos
+                for (let i = idxInicio; i < partes.length; i++) {
+                  const parte = partes[i];
+                  if (!parte) continue;
+
+                  // Ignora contas contábeis (formato 1.2.1, 2.1.1, etc)
+                  if (/^\d+\.\d+\.\d+/.test(parte)) {
+                    if (!accountCode) accountCode = parte;
+                    continue;
+                  }
+
+                  // Ignora documentos alfanuméricos (NF001, PIX001, etc)
+                  if (/^[A-Z]+\d+$/i.test(parte)) {
+                    if (!documento) documento = parte;
+                    continue;
+                  }
+
+                  // Se parece com valor numérico (não é conta contábil)
+                  if (/^[\d.,-]+$/.test(parte)) {
+                    // Verifica se tem vírgula ou ponto decimal (não é conta X.X.X)
+                    const temVirgula = parte.includes(',');
+                    const temPontoDecimal = parte.includes('.') && parte.split('.')[1]?.length <= 2;
+                    const naoEConta = !/^\d+\.\d+\./.test(parte); // Não é formato 1.2.1
+                    
+                    if ((temVirgula || temPontoDecimal) && naoEConta) {
+                      valorStr = parte;
+                      valorIdx = i;
+                      break;
+                    }
+                  }
+                }
               }
 
               const data = parseDataSafe(dataStr);
               if (!data) {
                 continue;
-              }
-
-              // Procura valor (formato numérico com vírgula ou ponto decimal)
-              let valorStr = null;
-              let valorIdx = null;
-
-              for (let i = idxInicio; i < partes.length; i++) {
-                const parte = partes[i];
-                if (!parte) continue;
-
-                // Se parece com valor numérico
-                if (/^[\d.,-]+$/.test(parte)) {
-                  // Verifica se tem vírgula ou ponto (indicando decimal)
-                  if (parte.includes(',') || (parte.includes('.') && parte.split('.')[1]?.length <= 2)) {
-                    valorStr = parte;
-                    valorIdx = i;
-                    break;
-                  }
-                }
               }
 
               if (!valorStr) {
@@ -242,20 +269,38 @@ function parseOtimizaTxt(filePath, strict = false) {
                 }
               }
 
-              // Procura outros campos (conta contábil, documento, etc)
-              let accountCode = null;
-              let documento = null;
+              // Procura outros campos (categoria, tipo, etc) se não foram definidos
               let eventType = null;
               let category = null;
               let entityType = null;
 
-              // Procura conta contábil (formato X.X.X ou número)
-              for (let i = idxInicio; i < partes.length; i++) {
-                if (i === valorIdx) continue;
-                const parte = partes[i];
-                if (parte && /^\d+\.?\d*\.?\d*$/.test(parte)) {
-                  accountCode = parte;
-                  break;
+              // Se formato fixo (7 campos), já temos tudo
+              if (partes.length === 7) {
+                category = partes[5] || null;
+                entityType = partes[6] || null;
+              } else {
+                // Procura conta contábil se não foi definida (formato X.X.X ou número)
+                if (!accountCode) {
+                  for (let i = 0; i < partes.length; i++) {
+                    if (i === valorIdx) continue;
+                    const parte = partes[i];
+                    if (parte && /^\d+\.\d+\.\d+/.test(parte)) {
+                      accountCode = parte;
+                      break;
+                    }
+                  }
+                }
+
+                // Procura documento se não foi definido
+                if (!documento) {
+                  for (let i = 0; i < partes.length; i++) {
+                    if (i === valorIdx) continue;
+                    const parte = partes[i];
+                    if (parte && /^[A-Z]+\d+$/i.test(parte)) {
+                      documento = parte;
+                      break;
+                    }
+                  }
                 }
               }
 

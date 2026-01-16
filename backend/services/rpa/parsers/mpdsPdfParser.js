@@ -468,9 +468,17 @@ function parseSicoob(texto) {
         // Ignora anos
         if (num >= 2020 && num <= 2030) continue;
         // Ignora números que parecem contas bancárias (5 dígitos sem vírgula: 11111, 12345, 33333)
-        if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
-          // Mas permite se tiver vírgula (pode ser valor grande)
+        // Mas só ignora se estiver no contexto de "CONTA" ou se for número repetido (11111, 33333)
+        const isRepeatedDigits = /^(\d)\1{4,}$/.test(candidate.replace(/\./g, ''));
+        if (num >= 10000 && num < 100000 && !candidate.includes(',') && isRepeatedDigits) {
           continue;
+        }
+        // Ignora números de 5 dígitos que aparecem após "CONTA" na linha
+        if (num >= 10000 && num < 100000 && !candidate.includes(',')) {
+          const beforeValue = linha.substring(0, matchIndex).toUpperCase();
+          if (beforeValue.includes('CONTA') || beforeValue.includes('AGENCIA') || beforeValue.includes('AGÊNCIA')) {
+            continue;
+          }
         }
         // Ignora números muito grandes sem vírgula que não são valores monetários típicos
         if (num >= 100000 && !candidate.includes(',')) continue;
