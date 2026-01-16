@@ -316,5 +316,50 @@ router.get('/plano-contas', authenticateToken, async (req, res) => {
   }
 });
 
+/**
+ * POST /api/debug/pdf-text
+ * Debug: extrai texto de PDF para análise
+ */
+router.post('/debug/pdf-text', authenticateToken, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Arquivo PDF não fornecido' });
+    }
+
+    const pdf = require('pdf-parse');
+    const dataBuffer = req.file.buffer;
+
+    const data = await pdf(dataBuffer, { max: 0 });
+    const texto = data.text;
+
+    // Busca por padrões de data
+    const padroesData = [
+      /\d{1,2}\/\d{1,2}(?:\/\d{2,4})?/g,
+      /\d{1,2}\s+(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s+\d{4}/gi
+    ];
+
+    const linhasComData = [];
+    const linhas = texto.split('\n');
+    linhas.forEach((linha, idx) => {
+      padroesData.forEach(padrao => {
+        if (padrao.test(linha)) {
+          linhasComData.push({ linha: idx + 1, conteudo: linha.trim() });
+        }
+      });
+    });
+
+    res.json({
+      total_pages: data.numpages,
+      text_length: texto.length,
+      text_preview: texto.substring(0, 2000),
+      lines_with_dates: linhasComData.slice(0, 50),
+      full_text: texto // Em produção, remover ou limitar
+    });
+  } catch (error) {
+    console.error('[DEBUG] Erro ao extrair texto do PDF:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 module.exports = router;
 

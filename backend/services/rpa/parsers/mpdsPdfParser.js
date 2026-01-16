@@ -226,8 +226,12 @@ function parseSicoob(texto) {
   // Infere ano do período
   const anoInferido = inferirAnoDoPeriodo(texto);
 
-  // Normaliza quebras de linha e espaços múltiplos
-  const textoNormalizado = texto.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/\s+/g, ' ');
+  // Normaliza quebras de linha mas preserva estrutura de linhas
+  const linhas = texto.split(/\r\n|\r|\n/).map(l => l.trim()).filter(l => l.length > 0);
+  const textoNormalizado = linhas.join(' ');
+
+  console.log(`[SICOOB-PARSER] Total de linhas no PDF: ${linhas.length}`);
+  console.log(`[SICOOB-PARSER] Primeiras 10 linhas:`, linhas.slice(0, 10));
 
   // Padrão 1: DD/MM Descrição Valor (formato mais comum)
   // Ex: "01/03 Transferência 1.234,56" ou "01/03/2025 Transferência 1.234,56"
@@ -386,6 +390,81 @@ function parseSicoob(texto) {
       issues.push(`Erro ao processar linha Sicoob (padrão 3): ${e.message}`);
       continue;
     }
+  }
+
+  // Padrão 4: Processa linha por linha (mais genérico)
+  // Busca qualquer linha que tenha data e valor
+  linhas.forEach((linha, idx) => {
+    // Busca data no formato DD/MM ou DD/MM/YYYY
+    const dataMatch = linha.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/);
+    if (!dataMatch) return;
+
+    // Busca valor (número com vírgula ou ponto)
+    const valorMatch = linha.match(/([R$]?\s*[\d.,-]+(?:\s*[DC])?)/);
+    if (!valorMatch) return;
+
+    try {
+      const [, dia, mes, anoStr] = dataMatch;
+      const valorStr = valorMatch[1];
+
+      let ano = anoStr ? parseInt(anoStr, 10) : null;
+      if (ano && ano < 100) {
+        ano = 2000 + ano;
+      }
+      if (!ano && anoInferido) {
+        ano = anoInferido;
+      }
+      if (!ano) {
+        ano = new Date().getFullYear();
+      }
+
+      const dataStr = `${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${ano}`;
+      const data = parseData(dataStr);
+      if (!data) {
+        return;
+      }
+
+      const valor = parseValor(valorStr);
+      if (valor === 0.0) {
+        return;
+      }
+
+      // Extrai descrição (tudo entre data e valor, ou após valor)
+      let desc = linha;
+      // Remove data
+      desc = desc.replace(/(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/g, '').trim();
+      // Remove valor
+      desc = desc.replace(/[R$]?\s*[\d.,-]+(?:\s*[DC])?/g, '').trim();
+      // Remove caracteres especiais no início/fim
+      desc = desc.replace(/^[^\w]+|[^\w]+$/g, '').trim();
+
+      if (!desc || desc.length < 3) {
+        desc = 'Lançamento bancário';
+      }
+
+      const chave = `${dataStr}|${normalizarDescricao(desc).substring(0, 50)}|${Math.round(valor * 100)}`;
+      if (seen.has(chave)) {
+        return;
+      }
+      seen.add(chave);
+
+      lancamentos.push({
+        data: format(data, 'yyyy-MM-dd'),
+        descricao: normalizarDescricao(desc),
+        documento: null,
+        valor: valor,
+        saldo: null,
+        conta_contabil: null,
+        origem: 'mpds'
+      });
+    } catch (e) {
+      issues.push(`Erro ao processar linha Sicoob (padrão 4, linha ${idx + 1}): ${e.message}`);
+    }
+  });
+
+  console.log(`[SICOOB-PARSER] Total de lançamentos extraídos: ${lancamentos.length}`);
+  if (issues.length > 0) {
+    console.warn(`[SICOOB-PARSER] Issues encontradas: ${issues.length}`);
   }
 
   return { lancamentos, issues };
